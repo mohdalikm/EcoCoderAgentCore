@@ -1,0 +1,86 @@
+version = 0.1
+
+[default]
+[default.global]
+[default.global.parameters]
+stack_name = "ecocoder-agent-core"
+s3_bucket = ""  # Will be auto-created by SAM
+s3_prefix = "ecocoder-agent-core"
+region = "ap-southeast-1"
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+image_repositories = []
+
+[default.build]
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy]
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+fail_on_empty_changeset = false
+stack_name = "ecocoder-agent-core"
+s3_bucket = ""  # Will be auto-created by SAM
+s3_prefix = "ecocoder-agent-core"
+region = "ap-southeast-1"
+disable_rollback = true
+parameter_overrides = [
+    "Environment=dev",
+    "AgentArn=arn:aws:bedrock-agentcore:ap-southeast-1:434114167546:runtime/ecocoderagentcore-H0kpdY5A85",
+    "GitHubWebhookSecret=",
+    "EcoCoderRegion=ap-southeast-1"
+]
+
+[default.package]
+[default.package.parameters]
+s3_bucket = ""  # Will be auto-created by SAM
+s3_prefix = "ecocoder-agent-core"
+region = "ap-southeast-1"
+
+[default.sync]
+[default.sync.parameters]
+watch = true
+
+[default.local_start_api]
+[default.local_start_api.parameters]
+warm_containers = "EAGER"
+
+[default.local_start_lambda]
+[default.local_start_lambda.parameters]
+warm_containers = "EAGER"
+
+# Production environment configuration
+[prod]
+[prod.global]
+[prod.global.parameters]
+stack_name = "ecocoder-agent-core-prod"
+region = "ap-southeast-1"
+
+[prod.deploy]
+[prod.deploy.parameters]
+stack_name = "ecocoder-agent-core-prod"
+parameter_overrides = [
+    "Environment=prod",
+    "AgentArn=arn:aws:bedrock-agentcore:ap-southeast-1:434114167546:runtime/ecocoderagentcore-H0kpdY5A85",
+    "GitHubWebhookSecret=",  # Set this to actual secret for production
+    "EcoCoderRegion=ap-southeast-1"
+]
+
+# Staging environment configuration
+[staging]
+[staging.global]
+[staging.global.parameters]
+stack_name = "ecocoder-agent-core-staging"
+region = "ap-southeast-1"
+
+[staging.deploy]
+[staging.deploy.parameters]
+stack_name = "ecocoder-agent-core-staging"
+parameter_overrides = [
+    "Environment=staging",
+    "AgentArn=arn:aws:bedrock-agentcore:ap-southeast-1:434114167546:runtime/ecocoderagentcore-H0kpdY5A85",
+    "GitHubWebhookSecret=",
+    "EcoCoderRegion=ap-southeast-1"
+]

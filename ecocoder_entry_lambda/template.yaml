@@ -1,0 +1,340 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  EcoCoder Agent Core - GitHub Webhook to Bedrock AgentCore Runtime Bridge
+  
+  This SAM template deploys the EcoCoder agent infrastructure including:
+  - Lambda function for webhook processing
+  - API Gateway for HTTP endpoint
+  - IAM roles and policies
+
+# Global configuration
+Globals:
+  Function:
+    Timeout: 300
+    MemorySize: 256
+    Runtime: python3.11
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        PYTHONPATH: /var/runtime:/var/task:/opt/python
+    Tracing: Active
+  Api:
+    TracingEnabled: true
+    Cors:
+      AllowMethods: "'GET,POST,OPTIONS'"
+      AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-GitHub-Event,X-Hub-Signature-256'"
+      AllowOrigin: "'*'"
+
+# Parameters for customization
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment
+  
+  AgentArn:
+    Type: String
+    Description: ARN of the Bedrock AgentCore Runtime instance
+    Default: arn:aws:bedrock-agentcore:ap-southeast-1:434114167546:runtime/ecocoderagentcore-H0kpdY5A85
+  
+  GitHubWebhookSecret:
+    Type: String
+    Description: GitHub webhook secret for signature verification (optional)
+    Default: ""
+    NoEcho: true
+  
+  EcoCoderRegion:
+    Type: String
+    Description: AWS Region for EcoCoder services
+    Default: ap-southeast-1
+
+# Resources
+Resources:
+  # Lambda function for GitHub webhook processing
+  EcoCoderCoreEntryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-ecocoder-core-entry"
+      CodeUri: ./
+      Handler: lambda_webhook_bridge.lambda_handler
+      Description: "EcoCoder GitHub webhook to Bedrock AgentCore Runtime bridge"
+      
+      # Environment variables
+      Environment:
+        Variables:
+          AGENT_ARN: !Ref AgentArn
+          GITHUB_WEBHOOK_SECRET: !Ref GitHubWebhookSecret
+          ECOCODER_REGION: !Ref EcoCoderRegion
+          ENVIRONMENT: !Ref Environment
+      
+      # IAM role
+      Role: !GetAtt EcoCoderLambdaRole.Arn
+      
+      # API Gateway integration
+      Events:
+        GitHubWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EcoCoderApi
+            Path: /webhook
+            Method: post
+        
+        GitHubWebhookOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EcoCoderApi
+            Path: /webhook
+            Method: options
+        
+        HealthCheck:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EcoCoderApi
+            Path: /health
+            Method: get
+
+
+
+  # API Gateway
+  EcoCoderApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-ecocoder-api"
+      StageName: !Ref Environment
+      Description: "API Gateway for EcoCoder GitHub webhook integration"
+      
+      # Enable logging and monitoring
+      AccessLogSetting:
+        DestinationArn: !GetAtt EcoCoderApiLogGroup.Arn
+        Format: >
+          {
+            "requestId": "$context.requestId",
+            "ip": "$context.identity.sourceIp",
+            "caller": "$context.identity.caller",
+            "user": "$context.identity.user",
+            "requestTime": "$context.requestTime",
+            "httpMethod": "$context.httpMethod",
+            "resourcePath": "$context.resourcePath",
+            "status": "$context.status",
+            "protocol": "$context.protocol",
+            "responseLength": "$context.responseLength",
+            "responseTime": "$context.responseTime",
+            "integrationLatency": "$context.integration.latency",
+            "integrationStatus": "$context.integration.status",
+            "integrationError": "$context.integration.error"
+          }
+      
+      # Method settings for throttling and caching
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
+          ThrottlingRateLimit: 100
+          ThrottlingBurstLimit: 200
+
+      # CORS configuration
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-GitHub-Event,X-Hub-Signature-256'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+
+      # Define API paths explicitly
+      DefinitionBody:
+        openapi: "3.0.1"
+        info:
+          title: "EcoCoder Webhook API"
+          description: "GitHub webhook endpoint for EcoCoder sustainable code analysis"
+          version: "1.0.0"
+        paths:
+          /webhook:
+            post:
+              summary: "GitHub Webhook Endpoint"
+              description: "Receives GitHub webhook events for pull request analysis"
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      type: object
+              responses:
+                "200":
+                  description: "Webhook processed successfully"
+                "400":
+                  description: "Bad request"
+                "401":
+                  description: "Unauthorized"
+                "500":
+                  description: "Internal server error"
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${EcoCoderCoreEntryFunction.Arn}/invocations"
+            
+            options:
+              summary: "CORS preflight"
+              description: "Handle CORS preflight requests"
+              responses:
+                "200":
+                  description: "CORS headers returned"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      schema:
+                        type: string
+                    Access-Control-Allow-Methods:
+                      schema:
+                        type: string
+                    Access-Control-Allow-Headers:
+                      schema:
+                        type: string
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${EcoCoderCoreEntryFunction.Arn}/invocations"
+          
+          /health:
+            get:
+              summary: "Health Check Endpoint"
+              description: "Simple health check for monitoring"
+              responses:
+                "200":
+                  description: "Service is healthy"
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${EcoCoderCoreEntryFunction.Arn}/invocations"
+
+  # IAM Role for Lambda function
+  EcoCoderLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-ecocoder-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      
+      Policies:
+        - PolicyName: EcoCoderBedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock-agentcore:InvokeAgentRuntime
+                  - bedrock-agentcore:GetAgentRuntime
+                Resource: !Ref AgentArn
+              
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  # CloudWatch Log Groups
+  EcoCoderLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-ecocoder-core-entry"
+      RetentionInDays: 30
+
+  EcoCoderApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/apigateway/${AWS::StackName}-ecocoder-api"
+      RetentionInDays: 30
+
+  # Lambda permissions for API Gateway
+  EcoCoderLambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EcoCoderCoreEntryFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "${EcoCoderApi}/*/*"
+
+
+
+  # CloudWatch Alarms for monitoring
+  EcoCoderLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-lambda-errors"
+      AlarmDescription: "Monitor Lambda function errors"
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref EcoCoderCoreEntryFunction
+
+  EcoCoderApiGateway4xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-api-4xx-errors"
+      AlarmDescription: "Monitor API Gateway 4xx errors"
+      MetricName: 4XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub "${AWS::StackName}-ecocoder-api"
+
+# Outputs
+Outputs:
+  EcoCoderApiUrl:
+    Description: "API Gateway endpoint URL for GitHub webhook"
+    Value: !Sub "https://${EcoCoderApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+    Export:
+      Name: !Sub "${AWS::StackName}-api-url"
+
+  EcoCoderWebhookUrl:
+    Description: "Complete webhook URL to configure in GitHub"
+    Value: !Sub "https://${EcoCoderApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/webhook"
+    Export:
+      Name: !Sub "${AWS::StackName}-webhook-url"
+
+  EcoCoderHealthCheckUrl:
+    Description: "Health check endpoint URL"
+    Value: !Sub "https://${EcoCoderApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/health"
+    Export:
+      Name: !Sub "${AWS::StackName}-health-url"
+
+  LambdaFunctionName:
+    Description: "Name of the Lambda function"
+    Value: !Ref EcoCoderCoreEntryFunction
+    Export:
+      Name: !Sub "${AWS::StackName}-lambda-name"
+
+  LambdaFunctionArn:
+    Description: "ARN of the Lambda function"
+    Value: !GetAtt EcoCoderCoreEntryFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-lambda-arn"
+
+  ApiGatewayId:
+    Description: "API Gateway ID"
+    Value: !Ref EcoCoderApi
+    Export:
+      Name: !Sub "${AWS::StackName}-api-id"

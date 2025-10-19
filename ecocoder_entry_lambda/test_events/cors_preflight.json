@@ -1,0 +1,16 @@
+{
+  "requestContext": {
+    "http": {
+      "method": "OPTIONS"
+    }
+  },
+  "headers": {
+    "Origin": "https://github.com",
+    "Access-Control-Request-Method": "POST",
+    "Access-Control-Request-Headers": "Content-Type,X-GitHub-Event"
+  },
+  "pathParameters": {
+    "proxy": "webhook"
+  },
+  "body": ""
+}

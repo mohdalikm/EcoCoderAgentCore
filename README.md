@@ -21,24 +21,48 @@ EcoCoderAgentCore is an intelligent AI agent that analyzes GitHub pull requests 
 
 ## Architecture
 
+### Infrastructure Overview
+
 ```mermaid
 graph TB
-    A[GitHub PR] --> B[Webhook Trigger]
-    B --> C[AgentCore Runtime]
-    C --> D[EcoCoder Agent]
+    A[GitHub PR Event] --> B[GitHub Webhook]
+    B --> C[API Gateway]
+    C --> D[Lambda: ecocoder-core-entry]
+    D --> E[Bedrock AgentCore Runtime]
+    E --> F[EcoCoder Agent Container]
     
-    D --> E[CodeGuru Reviewer]
-    D --> F[CodeGuru Profiler]
-    D --> G[CodeCarbon Estimator]
-    D --> H[GitHub Poster]
+    F --> G[CodeGuru Reviewer]
+    F --> H[CodeGuru Profiler]
+    F --> I[CodeCarbon Estimator]
+    F --> J[GitHub Poster]
     
-    E --> I[Code Quality Report]
-    F --> J[Performance Analysis]
-    G --> K[Carbon Footprint]
-    H --> L[Green Code Report]
+    G --> K[Code Quality Report]
+    H --> L[Performance Analysis]
+    I --> M[Carbon Footprint]
+    J --> N[Green Code Report]
     
-    L --> M[GitHub Comment]
+    N --> O[GitHub Comment]
+    
+    C --> P[CloudWatch Logs]
+    D --> P
+    E --> P
+    
+    Q[IAM Role] --> D
+    Q --> E
+    
+    R[Secrets Manager] --> F
+    S[Parameter Store] --> F
 ```
+
+### AWS Components
+
+- **API Gateway**: HTTP endpoint for GitHub webhooks with CORS support
+- **Lambda Function**: `ecocoder-core-entry` - webhook processor and AgentCore bridge
+- **Bedrock AgentCore Runtime**: Managed container runtime for the AI agent
+- **IAM Roles**: Least-privilege access for Lambda and AgentCore
+- **CloudWatch**: Comprehensive logging and monitoring
+- **Secrets Manager**: Secure storage for GitHub tokens and webhook secrets
+- **Parameter Store**: Configuration management for agent settings
 
 ### Components
 
@@ -52,9 +76,10 @@ graph TB
 ### Prerequisites
 
 - AWS Account with appropriate permissions
+- AWS CLI configured (`aws configure`)
+- AWS SAM CLI installed
 - GitHub repository with webhook access
 - Python 3.11+ for local development
-- Docker for containerization
 
 ### 1. Clone and Setup
 
@@ -132,41 +157,81 @@ export MOCK_MODE=true
 python -m app.agent
 ```
 
-### 5. Deploy to AWS
+### 5. Deploy to AWS with SAM
 
-#### Build and Push Container:
+#### Quick Deploy (Recommended):
 
 ```bash
-# Build Docker image
-docker build -t ecocoder-agent-core .
+# From root directory (using wrapper script)
+./deploy_lambda.sh
 
-# Tag and push to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
-docker tag ecocoder-agent-core:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/ecocoder-agent-core:latest
-docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/ecocoder-agent-core:latest
+# Deploy to staging
+./deploy_lambda.sh staging
+
+# Deploy to production
+./deploy_lambda.sh prod
+
+# OR navigate to Lambda directory directly
+cd ecocoder_entry_lambda/
+./deploy.sh
 ```
 
-#### Deploy with AgentCore:
+#### Manual Deploy:
 
 ```bash
-# Deploy using AgentCore CLI
-aws bedrock-agentcore deploy \
-  --agent-name ecocoder-agent-core \
-  --config-file .bedrock_agentcore.yaml \
-  --image-uri 123456789012.dkr.ecr.us-east-1.amazonaws.com/ecocoder-agent-core:latest
+# Navigate to Lambda directory
+cd ecocoder_entry_lambda/
+
+# Build SAM application
+sam build
+
+# Deploy with guided configuration (first time)
+sam deploy --guided
+
+# Deploy with existing configuration
+sam deploy
+```
+
+#### Local Testing:
+
+```bash
+# From root directory (using wrapper script)
+./test_lambda.sh
+
+# OR navigate to Lambda directory directly
+cd ecocoder_entry_lambda/
+./test_local.sh
+
+# Or manually start local API
+cd ecocoder_entry_lambda/
+sam local start-api --port 3000
+
+# Test health endpoint locally
+curl http://localhost:3000/health
 ```
 
 ## Usage
 
 ### GitHub Integration
 
-1. **Setup Webhook**: Configure GitHub webhook in your repository settings:
-   - Payload URL: `https://your-agent-endpoint/webhook/github`
-   - Content type: `application/json`
-   - Secret: Your webhook secret from AWS Secrets Manager
-   - Events: Pull requests
+1. **Deploy the Infrastructure**: 
+   ```bash
+   ./deploy.sh
+   ```
+   
+   The deployment will output the webhook URL you need for GitHub.
 
-2. **Pull Request Analysis**: When a PR is created or updated, the agent will:
+2. **Setup GitHub Webhook**: Configure GitHub webhook in your repository settings:
+   - Payload URL: `https://your-api-gateway-id.execute-api.ap-southeast-1.amazonaws.com/dev/webhook`
+   - Content type: `application/json`
+   - Secret: Your webhook secret from AWS Secrets Manager (optional)
+   - Events: Pull requests
+   - SSL verification: Enable
+
+3. **Pull Request Analysis**: When a PR is created or updated, the agent will:
+   - Receive webhook via API Gateway
+   - Forward to Lambda function (`ecocoder-core-entry`)
+   - Invoke Bedrock AgentCore Runtime
    - Analyze code quality with CodeGuru Reviewer
    - Profile performance characteristics
    - Calculate carbon footprint estimates
@@ -253,13 +318,32 @@ EcoCoderAgentCore/
 │   │   └── validation.py
 │   └── prompts/
 │       └── system_prompt.md  # Agent instructions
-├── tests/                    # Test suite
+├── ecocoder_entry_lambda/    # Complete Lambda SAM application
+│   ├── lambda_webhook_bridge.py # Main Lambda handler
+│   ├── requirements.txt      # Lambda dependencies
+│   ├── template.yaml        # AWS SAM template
+│   ├── samconfig.toml       # SAM configuration
+│   ├── deploy.sh           # Deployment script
+│   ├── test_local.sh      # Local testing script
+│   ├── cleanup.sh         # Resource cleanup script
+│   ├── hooks/             # SAM deployment hooks
+│   │   ├── pretraffic.py  # Pre-deployment validation
+│   │   └── posttraffic.py # Post-deployment validation
+│   ├── test_events/       # Lambda test events
+│   │   ├── health_check.json
+│   │   ├── webhook_pr_opened.json
+│   │   ├── cors_preflight.json
+│   │   └── test_pr_payload.json
+│   └── README.md         # Lambda documentation
+├── tests/                 # Test suite
 ├── .github/
 │   └── workflows/
-│       └── ci-cd.yml        # CI/CD pipeline
-├── Dockerfile               # Container configuration
-├── .bedrock_agentcore.yaml  # AgentCore deployment config
-└── requirements.txt         # Python dependencies
+│       └── ci-cd.yml     # CI/CD pipeline
+├── deploy_lambda.sh      # Root-level deployment wrapper
+├── test_lambda.sh       # Root-level testing wrapper
+├── Dockerfile            # Container configuration
+├── .bedrock_agentcore.yaml # AgentCore deployment config
+└── requirements.txt      # Python dependencies
 ```
 
 ### Running Tests

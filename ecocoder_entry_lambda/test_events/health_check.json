@@ -1,0 +1,12 @@
+{
+  "requestContext": {
+    "http": {
+      "method": "GET"
+    }
+  },
+  "headers": {},
+  "pathParameters": {
+    "proxy": "health"
+  },
+  "body": ""
+}
