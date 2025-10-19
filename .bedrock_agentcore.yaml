@@ -1,0 +1,155 @@
+# AWS Bedrock AgentCore Configuration
+# This file configures the container deployment for the EcoCoderAgentCore agent
+
+apiVersion: bedrock/v1
+kind: Agent
+metadata:
+  name: ecocoder-agent-core
+  description: "Green Software Engineering AI Agent for sustainable code analysis"
+  version: "1.0.0"
+  tags:
+    - sustainability
+    - code-analysis
+    - github-integration
+    - performance-optimization
+
+spec:
+  # Container configuration
+  container:
+    image: ecocoder-agent-core:latest
+    port: 8080
+    
+  # Resource limits
+  resources:
+    cpu: "1"
+    memory: "2Gi"
+    storage: "10Gi"
+    
+  # Environment variables
+  environment:
+    - name: AWS_REGION
+      valueFrom:
+        configMap:
+          name: ecocoder-config
+          key: aws_region
+          
+    - name: GITHUB_TOKEN_SECRET_NAME
+      value: "ecocoder/github-token"
+      
+    - name: WEBHOOK_SECRET_NAME
+      value: "ecocoder/webhook-secret"
+      
+    - name: LOG_LEVEL
+      value: "INFO"
+      
+    - name: MOCK_MODE
+      value: "false"
+      
+  # IAM permissions required
+  permissions:
+    policies:
+      - name: CodeGuruReviewerAccess
+        version: "2012-10-17"
+        statements:
+          - effect: Allow
+            actions:
+              - "codeguru-reviewer:CreateCodeReview"
+              - "codeguru-reviewer:DescribeCodeReview" 
+              - "codeguru-reviewer:ListRecommendations"
+              - "codeguru-reviewer:TagResource"
+            resources: ["*"]
+            
+      - name: CodeGuruProfilerAccess
+        version: "2012-10-17"
+        statements:
+          - effect: Allow
+            actions:
+              - "codeguru-profiler:CreateProfilingGroup"
+              - "codeguru-profiler:DescribeProfilingGroup"
+              - "codeguru-profiler:GetProfile"
+              - "codeguru-profiler:ConfigureAgent"
+              - "codeguru-profiler:PostAgentProfile"
+              - "codeguru-profiler:TagResource"
+            resources: ["*"]
+            
+      - name: SecretsManagerAccess
+        version: "2012-10-17"
+        statements:
+          - effect: Allow
+            actions:
+              - "secretsmanager:GetSecretValue"
+            resources: 
+              - "arn:aws:secretsmanager:*:*:secret:ecocoder/*"
+              
+      - name: ParameterStoreAccess
+        version: "2012-10-17"
+        statements:
+          - effect: Allow
+            actions:
+              - "ssm:GetParameter"
+              - "ssm:GetParameters"
+            resources:
+              - "arn:aws:ssm:*:*:parameter/ecocoder/*"
+              
+  # Scaling configuration
+  scaling:
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilization: 70
+    targetMemoryUtilization: 80
+    
+  # Health checks
+  healthCheck:
+    path: "/health"
+    port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    
+  # Event triggers
+  triggers:
+    - name: github-webhook
+      type: webhook
+      configuration:
+        path: "/webhook/github"
+        methods: ["POST"]
+        headers:
+          - name: "X-GitHub-Event"
+            required: true
+          - name: "X-Hub-Signature-256"
+            required: true
+            
+  # Logging configuration  
+  logging:
+    level: INFO
+    format: json
+    destinations:
+      - cloudwatch:
+          logGroup: "/aws/bedrock/agentcore/ecocoder"
+          retentionDays: 30
+          
+  # Monitoring and alerting
+  monitoring:
+    metrics:
+      enabled: true
+      namespace: "BedrockAgentCore/EcoCoder"
+      
+    alarms:
+      - name: HighErrorRate
+        metric: ErrorRate
+        threshold: 5
+        comparisonOperator: GreaterThanThreshold
+        evaluationPeriods: 2
+        
+      - name: HighLatency
+        metric: ResponseTime
+        threshold: 30000
+        comparisonOperator: GreaterThanThreshold
+        evaluationPeriods: 2
+        
+      - name: LowSuccessRate
+        metric: SuccessRate
+        threshold: 95
+        comparisonOperator: LessThanThreshold
+        evaluationPeriods: 3
