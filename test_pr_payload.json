@@ -1,0 +1,21 @@
+{
+  "action": "opened",
+  "pull_request": {
+    "number": 42,
+    "title": "Test: GitHub webhook integration",
+    "head": {
+      "ref": "feature/webhook-test",
+      "sha": "abc123def456"
+    },
+    "base": {
+      "ref": "main"
+    }
+  },
+  "repository": {
+    "full_name": "mohdalikm/test-repo",
+    "clone_url": "https://github.com/mohdalikm/test-repo.git",
+    "owner": {
+      "id": "12345"
+    }
+  }
+}
