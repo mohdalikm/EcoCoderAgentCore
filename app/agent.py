@@ -14,22 +14,15 @@ import os
 import sys
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional
+from strands import Agent
+from bedrock_agentcore import BedrockAgentCoreApp
+from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+    
 
 # Add current directory to Python path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 sys.path.insert(0, project_root)
-
-# Import Strands SDK and BedrockAgentCore
-try:
-    from strands import Agent
-    from bedrock_agentcore import BedrockAgentCoreApp
-    from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
-    print("✅ Strands SDK and BedrockAgentCore loaded successfully!")
-except ImportError as e:
-    print(f"❌ Error importing Strands SDK or BedrockAgentCore: {e}")
-    raise ImportError("Required dependencies not available. Please install strands and bedrock_agentcore packages.")
 
 # Import tool implementations
 from app.tools.codeguru_reviewer import analyze_code_quality
@@ -46,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize app
 app = BedrockAgentCoreApp()
+        
 
 # Configuration
 AWS_REGION = os.getenv('AWS_REGION', 'ap-southeast-1')
@@ -234,6 +228,8 @@ def parse_github_webhook(payload: dict) -> dict:
         logger.error(f"Error parsing GitHub webhook: {e}")
         raise ValueError(f"Invalid GitHub webhook payload: {e}")
 
+# Create agent instance for this analysis
+agent = create_agent("x9kuy", 'test-repo')
 
 @app.entrypoint
 def invoke(payload: dict) -> dict:
@@ -284,7 +280,7 @@ def invoke(payload: dict) -> dict:
         logger.info(f"Starting analysis for PR #{pr_info['pr_number']} in {pr_info['repository_name']}")
         
         # Create agent instance for this analysis
-        agent = create_agent(session_id, pr_info['repository_name'])
+        #agent = create_agent(session_id, pr_info['repository_name'])
         
         # Construct analysis request for the agent
         analysis_request = f"""
@@ -336,38 +332,5 @@ Repository ARN: arn:aws:codecommit:{pr_info['region']}:{pr_info['account_id']}:{
         }
 
 
-def main():
-    """Main function for local testing and development"""
-    print("🌱 Eco-Coder Agent Starting...")
-    print("Built with Strands SDK and AWS Bedrock AgentCore Runtime")
-    print("For sustainable software development")
-    
-    # In AgentCore Runtime, this would be managed automatically
-    # For local testing, we can simulate webhook events
-    
-    # Example test payload (GitHub PR webhook format)
-    test_payload = {
-        "action": "opened",
-        "pull_request": {
-            "number": 42,
-            "title": "feat: Add new data processing algorithm",
-            "head": {
-                "ref": "feature/optimize-performance", 
-                "sha": "a1b2c3d4e5f6"
-            },
-            "base": {"ref": "main"}
-        },
-        "repository": {
-            "full_name": "eco-tech/sample-app",
-            "clone_url": "https://github.com/eco-tech/sample-app.git",
-            "owner": {"id": "123456"}
-        }
-    }
-    
-    print("\n🔍 Testing with sample PR webhook...")
-    result = invoke(test_payload)
-    print(f"\n✅ Result: {json.dumps(result, indent=2)}")
-
-
 if __name__ == "__main__":
-    main()
+    app.run()

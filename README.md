@@ -112,10 +112,10 @@ aws secretsmanager create-secret \
 ```bash
 # Carbon intensity data for regions
 aws ssm put-parameter \
-  --name "/ecocoder/carbon-intensity/us-east-1" \
+  --name "/ecocoder/carbon-intensity/ap-southeast-1" \
   --value "0.4" \
   --type "String" \
-  --description "Carbon intensity for US East 1"
+  --description "Carbon intensity for AP Southeeast 1"
 
 aws ssm put-parameter \
   --name "/ecocoder/config/profiling-duration" \
