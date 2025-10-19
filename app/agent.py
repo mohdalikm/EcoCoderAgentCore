@@ -11,9 +11,15 @@ Requires Strands SDK and BedrockAgentCore packages to be available in the runtim
 import json
 import logging
 import os
+import sys
 import time
 from datetime import datetime
 from typing import Dict, Any, Optional
+
+# Add current directory to Python path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.insert(0, project_root)
 
 # Import Strands SDK and BedrockAgentCore
 try:
@@ -24,8 +30,6 @@ try:
 except ImportError as e:
     print(f"❌ Error importing Strands SDK or BedrockAgentCore: {e}")
     raise ImportError("Required dependencies not available. Please install strands and bedrock_agentcore packages.")
-
-
 
 # Import tool implementations
 from app.tools.codeguru_reviewer import analyze_code_quality

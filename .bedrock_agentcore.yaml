@@ -1,155 +1,41 @@
-# AWS Bedrock AgentCore Configuration
-# This file configures the container deployment for the EcoCoderAgentCore agent
-
-apiVersion: bedrock/v1
-kind: Agent
-metadata:
-  name: ecocoder-agent-core
-  description: "Green Software Engineering AI Agent for sustainable code analysis"
-  version: "1.0.0"
-  tags:
-    - sustainability
-    - code-analysis
-    - github-integration
-    - performance-optimization
-
-spec:
-  # Container configuration
-  container:
-    image: ecocoder-agent-core:latest
-    port: 8080
-    
-  # Resource limits
-  resources:
-    cpu: "1"
-    memory: "2Gi"
-    storage: "10Gi"
-    
-  # Environment variables
-  environment:
-    - name: AWS_REGION
-      valueFrom:
-        configMap:
-          name: ecocoder-config
-          key: aws_region
-          
-    - name: GITHUB_TOKEN_SECRET_NAME
-      value: "ecocoder/github-token"
-      
-    - name: WEBHOOK_SECRET_NAME
-      value: "ecocoder/webhook-secret"
-      
-    - name: LOG_LEVEL
-      value: "INFO"
-      
-    - name: MOCK_MODE
-      value: "false"
-      
-  # IAM permissions required
-  permissions:
-    policies:
-      - name: CodeGuruReviewerAccess
-        version: "2012-10-17"
-        statements:
-          - effect: Allow
-            actions:
-              - "codeguru-reviewer:CreateCodeReview"
-              - "codeguru-reviewer:DescribeCodeReview" 
-              - "codeguru-reviewer:ListRecommendations"
-              - "codeguru-reviewer:TagResource"
-            resources: ["*"]
-            
-      - name: CodeGuruProfilerAccess
-        version: "2012-10-17"
-        statements:
-          - effect: Allow
-            actions:
-              - "codeguru-profiler:CreateProfilingGroup"
-              - "codeguru-profiler:DescribeProfilingGroup"
-              - "codeguru-profiler:GetProfile"
-              - "codeguru-profiler:ConfigureAgent"
-              - "codeguru-profiler:PostAgentProfile"
-              - "codeguru-profiler:TagResource"
-            resources: ["*"]
-            
-      - name: SecretsManagerAccess
-        version: "2012-10-17"
-        statements:
-          - effect: Allow
-            actions:
-              - "secretsmanager:GetSecretValue"
-            resources: 
-              - "arn:aws:secretsmanager:*:*:secret:ecocoder/*"
-              
-      - name: ParameterStoreAccess
-        version: "2012-10-17"
-        statements:
-          - effect: Allow
-            actions:
-              - "ssm:GetParameter"
-              - "ssm:GetParameters"
-            resources:
-              - "arn:aws:ssm:*:*:parameter/ecocoder/*"
-              
-  # Scaling configuration
-  scaling:
-    minReplicas: 1
-    maxReplicas: 5
-    targetCPUUtilization: 70
-    targetMemoryUtilization: 80
-    
-  # Health checks
-  healthCheck:
-    path: "/health"
-    port: 8080
-    initialDelaySeconds: 30
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
-    
-  # Event triggers
-  triggers:
-    - name: github-webhook
-      type: webhook
-      configuration:
-        path: "/webhook/github"
-        methods: ["POST"]
-        headers:
-          - name: "X-GitHub-Event"
-            required: true
-          - name: "X-Hub-Signature-256"
-            required: true
-            
-  # Logging configuration  
-  logging:
-    level: INFO
-    format: json
-    destinations:
-      - cloudwatch:
-          logGroup: "/aws/bedrock/agentcore/ecocoder"
-          retentionDays: 30
-          
-  # Monitoring and alerting
-  monitoring:
-    metrics:
-      enabled: true
-      namespace: "BedrockAgentCore/EcoCoder"
-      
-    alarms:
-      - name: HighErrorRate
-        metric: ErrorRate
-        threshold: 5
-        comparisonOperator: GreaterThanThreshold
-        evaluationPeriods: 2
-        
-      - name: HighLatency
-        metric: ResponseTime
-        threshold: 30000
-        comparisonOperator: GreaterThanThreshold
-        evaluationPeriods: 2
-        
-      - name: LowSuccessRate
-        metric: SuccessRate
-        threshold: 95
-        comparisonOperator: LessThanThreshold
-        evaluationPeriods: 3
+default_agent: ecocoderagentcore
+agents:
+  ecocoderagentcore:
+    name: ecocoderagentcore
+    entrypoint: /Users/ali/Source/EcoCoderAgentCore/app/agent.py
+    platform: linux/arm64
+    container_runtime: none
+    source_path: /Users/ali/Source/EcoCoderAgentCore/app
+    aws:
+      execution_role: arn:aws:iam::434114167546:role/AmazonBedrockAgentCoreSDKRuntime-ap-southeast-1-b953f47315
+      execution_role_auto_create: false
+      account: '434114167546'
+      region: ap-southeast-1
+      ecr_repository: 434114167546.dkr.ecr.ap-southeast-1.amazonaws.com/bedrock-agentcore-ecocoderagentcore
+      ecr_auto_create: false
+      network_configuration:
+        network_mode: PUBLIC
+        network_mode_config: null
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: ecocoderagentcore-H0kpdY5A85
+      agent_arn: arn:aws:bedrock-agentcore:ap-southeast-1:434114167546:runtime/ecocoderagentcore-H0kpdY5A85
+      agent_session_id: d4f1a080-af34-4262-b76e-8cc3343a656c
+    codebuild:
+      project_name: bedrock-agentcore-ecocoderagentcore-builder
+      execution_role: arn:aws:iam::434114167546:role/AmazonBedrockAgentCoreSDKCodeBuild-ap-southeast-1-b953f47315
+      source_bucket: bedrock-agentcore-codebuild-sources-434114167546-ap-southeast-1
+    memory:
+      mode: STM_ONLY
+      memory_id: ecocoderagentcore_mem-eVk8F8D2Mc
+      memory_arn: arn:aws:bedrock-agentcore:ap-southeast-1:434114167546:memory/ecocoderagentcore_mem-eVk8F8D2Mc
+      memory_name: ecocoderagentcore_mem
+      event_expiry_days: 30
+      first_invoke_memory_check_done: true
+      was_created_by_toolkit: true
+    authorizer_configuration: null
+    request_header_configuration: null
+    oauth_configuration: null

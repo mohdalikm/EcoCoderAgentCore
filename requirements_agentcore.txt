@@ -1,0 +1,11 @@
+bedrock-agentcore
+strands-agents
+boto3
+botocore
+codecarbon==2.3.4
+pandas>=2.0.3
+requests>=2.31.0
+python-dateutil>=2.8.2
+pyyaml>=6.0.1
+pydantic>=2.5.0
+structlog>=23.1.0

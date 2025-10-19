@@ -7,7 +7,7 @@
 set -e
 
 # Configuration
-VENV_DIR=".venv"
+VENV_DIR=".venv-py311"
 PYTHON_EXEC="$VENV_DIR/bin/python"
 PIP_EXEC="$VENV_DIR/bin/pip"
 PYTHON311="/opt/homebrew/bin/python3.11"

@@ -62,7 +62,7 @@ The `.env` file contains development settings:
 MOCK_MODE=true
 
 # AWS Configuration (not needed for development)
-AWS_REGION=us-east-1
+AWS_REGION=ap-southeast-1
 
 # Logging
 LOG_LEVEL=INFO
@@ -89,7 +89,7 @@ When you run the agent, you'll see output like:
 🌱 Starting EcoCoder Agent in Development Mode
 📁 Project root: /path/to/EcoCoderAgentCore
 🔧 Mock mode: true
-🌍 AWS region: us-east-1
+🌍 AWS region: ap-southeast-1
 
 🌱 Eco-Coder Agent Starting...
 Built with Strands SDK and AWS Bedrock AgentCore Runtime

@@ -1,7 +1,5 @@
 # EcoCoderAgentCore Requirements
 # Core Strands and AgentCore dependencies
-# EcoCoderAgentCore Requirements
-# Core Strands and AgentCore dependencies
 strands-agents
 bedrock-agentcore
 

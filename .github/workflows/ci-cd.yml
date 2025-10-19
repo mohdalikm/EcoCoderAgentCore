@@ -9,7 +9,7 @@ on:
     types: [ published ]
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ap-southeast-1
   ECR_REPOSITORY: ecocoder-agent-core
   CONTAINER_NAME: ecocoder-agent-core
 

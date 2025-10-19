@@ -82,7 +82,7 @@ vim .env
 
 Required environment variables:
 ```bash
-AWS_REGION=us-east-1
+AWS_REGION=ap-southeast-1
 GITHUB_TOKEN_SECRET_NAME=ecocoder/github-token
 WEBHOOK_SECRET_NAME=ecocoder/webhook-secret
 LOG_LEVEL=INFO

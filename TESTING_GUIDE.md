@@ -31,7 +31,7 @@ The `.env` file contains development settings:
 # Key settings
 MOCK_MODE=false          # Set to 'true' for mock testing
 ENVIRONMENT=development
-AWS_REGION=us-east-1
+AWS_REGION=ap-southeast-1
 LOG_LEVEL=INFO
 ```
 
