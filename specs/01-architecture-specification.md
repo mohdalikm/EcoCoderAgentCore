@@ -1117,7 +1117,7 @@ Estimated savings: $5/1000 PRs
 
 **4. Log Filtering** (save ~50% on logs):
 - Only log ERROR and WARN in production
-- Use INFO for debugging in dev/staging
+- Use INFO for debugging in dev
 - Reduce CloudWatch ingestion
 Estimated savings: $15/1000 PRs
 
@@ -1324,13 +1324,11 @@ With optimizations applied:
 **Change Management**:
 - All infrastructure changes via Git pull requests
 - Peer review required for production changes
-- Automated testing in dev/staging before production
+- Automated testing in dev before production
 - Rollback plan documented for each deployment
 
 **Access Control**:
 - AWS account access via SSO
-- MFA required for all human users
-- Service accounts use IAM roles (no long-term credentials)
 - Principle of least privilege enforced
 
 **Incident Response**:
@@ -1348,15 +1346,10 @@ With optimizations applied:
 | Environment | Purpose | AWS Account | Agent Name | GitHub Webhook |
 |-------------|---------|-------------|------------|----------------|
 | **Development** | Active development, testing | dev-account | eco-coder-agent-dev | Test repo only |
-| **Staging** | Pre-production validation | staging-account | eco-coder-agent-staging | Internal repos |
 | **Production** | Live system | prod-account | eco-coder-agent | All target repos |
 
 **Environment Isolation**:
-- Separate AWS accounts (strongly recommended)
 - Distinct AgentCore Runtime deployments
-- Separate ECR repositories per environment
-- Different Secrets Manager secrets
-- Isolated CloudWatch log groups
 
 **Environment Configuration**:
 ```yaml
@@ -1418,18 +1411,6 @@ environment_variables:
          --profile dev
    ```
 
-4. **Deploy to Staging** (on push to `main` branch):
-   ```yaml
-   - name: Deploy to staging
-     run: |
-       docker tag eco-coder:${{ github.sha }} ${ECR_STAGING}/eco-coder:staging-${{ github.sha }}
-       docker push ${ECR_STAGING}/eco-coder:staging-${{ github.sha }}
-       agentcore launch \
-         --agent-name eco-coder-agent-staging \
-         --image-tag staging-${{ github.sha }} \
-         --profile staging
-   ```
-
 5. **Manual Approval** (required for production):
    - GitHub Actions environment protection rule
    - Requires approval from designated reviewers
@@ -1478,29 +1459,7 @@ environment_variables:
 
 ## Appendices
 
-### Appendix A: AWS Service Quotas
-
-| Service | Quota | Current Usage | Action Required |
-|---------|-------|---------------|-----------------|
-| AgentCore Runtime invocations | No published limit | ~10/hour | Monitor via metrics |
-| Bedrock model invocations (Claude) | 10,000/min | ~100/hour | Request increase if > 5K |
-| CodeGuru Reviewer | 1000 reviews/day | ~100/day | Request increase if needed |
-| CodeGuru Profiler API calls | No hard limit | ~100/day | None |
-| ECR storage | 500 GB | ~0.5 GB | None |
-| CloudWatch Logs ingestion | 5 GB/s | ~1 MB/s | None |
-| Secrets Manager secrets | 500,000 | 1 | None |
-
-### Appendix B: External Dependencies
-
-| Dependency | Version | Purpose | Fallback | Impact if Unavailable |
-|------------|---------|---------|----------|----------------------|
-| GitHub API | v3 REST | PR commenting | Queue for retry | Comments not posted |
-| Strands SDK | 1.2.0 | Agent framework | None | Cannot deploy |
-| CodeCarbon | 2.3.4 | CO2 calculation | Manual formula | Less accurate estimates |
-| boto3 | 1.34+ | AWS SDK | None | Cannot call AWS services |
-| AWS Customer Carbon API | Latest | Carbon intensity | Regional averages | Less accurate by region |
-
-### Appendix C: Container Dependencies
+### Appendix A: Container Dependencies
 
 **Base Image**: `python:3.11-slim`
 
@@ -1523,4 +1482,4 @@ pyyaml==6.0.1
 
 **Document Version**: 2.0  
 **Last Updated**: 2025-10-19  
-**Status**: Corrected Architecture (No API Gateway, No Lambda Tools, Strands-based Agent in AgentCore Runtime)
+**Status**: Corrected Architecture

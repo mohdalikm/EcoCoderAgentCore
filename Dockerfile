@@ -7,7 +7,7 @@ WORKDIR /app
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
-ENV MOCK_MODE=false
+ENV ENVIRONMENT=production
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

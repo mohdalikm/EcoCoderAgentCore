@@ -236,8 +236,8 @@ Environment variables are set in `.bedrock_agentcore.yaml` and accessed by tools
 ```yaml
 environment_variables:
   LOG_LEVEL: INFO
-  AWS_REGION: us-east-1
-  GITHUB_TOKEN_SECRET_ARN: arn:aws:secretsmanager:us-east-1:123456789012:secret:eco-coder/github-token
+  AWS_REGION: ap-southeast-1
+  GITHUB_TOKEN_SECRET_ARN: arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:eco-coder/github-token
   CARBON_DATA_PARAMETER_PATH: /eco-coder/carbon-intensity
 ```
 
@@ -362,7 +362,7 @@ def analyze_code_quality(
     Called by agent via @agent.tool decorator in agent.py.
     
     Args:
-        repository_arn: ARN of the repository (e.g., arn:aws:codecommit:us-east-1:123456789012:my-repo)
+        repository_arn: ARN of the repository (e.g., arn:aws:codecommit:ap-southeast-1:123456789012:my-repo)
         branch_name: Git branch name (e.g., "main", "feature/new-feature")
         commit_sha: Git commit SHA to analyze (minimum 7 characters)
         
@@ -693,7 +693,7 @@ from index import lambda_handler, validate_parameters, CodeGuruReviewerException
 
 def test_validate_parameters_success():
     params = {
-        "repository_arn": "arn:aws:codecommit:us-east-1:123456789012:test-repo",
+        "repository_arn": "arn:aws:codecommit:ap-southeast-1:123456789012:test-repo",
         "branch_name": "main"
     }
     # Should not raise exception
@@ -701,7 +701,7 @@ def test_validate_parameters_success():
 
 
 def test_validate_parameters_missing():
-    params = {"repository_arn": "arn:aws:codecommit:us-east-1:123456789012:test-repo"}
+    params = {"repository_arn": "arn:aws:codecommit:ap-southeast-1:123456789012:test-repo"}
     
     with pytest.raises(CodeGuruReviewerException) as exc_info:
         validate_parameters(params)
@@ -726,7 +726,7 @@ def test_lambda_handler_success(mock_client):
     # Mock CodeGuru responses
     mock_client.create_code_review.return_value = {
         'CodeReview': {
-            'CodeReviewArn': 'arn:aws:codeguru-reviewer:us-east-1:123456789012:code-review/test-review-id'
+            'CodeReviewArn': 'arn:aws:codeguru-reviewer:ap-southeast-1:123456789012:code-review/test-review-id'
         }
     }
     
@@ -749,7 +749,7 @@ def test_lambda_handler_success(mock_client):
     }
     
     event = {
-        "repository_arn": "arn:aws:codecommit:us-east-1:123456789012:test-repo",
+        "repository_arn": "arn:aws:codecommit:ap-southeast-1:123456789012:test-repo",
         "branch_name": "main",
         "commit_sha": "abc123"
     }
@@ -1187,7 +1187,7 @@ def calculate_carbon_footprint(
     Args:
         cpu_time_seconds: Total CPU time consumed across all executions
         ram_usage_mb: Average memory usage in megabytes
-        aws_region: AWS region (e.g., "us-east-1") for carbon intensity
+        aws_region: AWS region (e.g., "ap-southeast-1") for carbon intensity
         execution_count: Number of executions (for per-execution metrics)
         
     Returns:
@@ -1728,16 +1728,16 @@ def aws_credentials(monkeypatch):
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
     monkeypatch.setenv("AWS_SECURITY_TOKEN", "testing")
     monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-southeast-1")
 
 
 @mock_ssm
 def test_carbon_calculation(aws_credentials):
     """Test carbon footprint calculation"""
     # Setup SSM parameter for carbon intensity
-    ssm = boto3.client('ssm', region_name='us-east-1')
+    ssm = boto3.client('ssm', region_name='ap-southeast-1')
     ssm.put_parameter(
-        Name='/eco-coder/carbon-intensity/us-east-1',
+        Name='/eco-coder/carbon-intensity/ap-southeast-1',
         Value='415.3',
         Type='String'
     )
@@ -1745,7 +1745,7 @@ def test_carbon_calculation(aws_credentials):
     result = calculate_carbon_footprint(
         cpu_time_seconds=1.25,
         ram_usage_mb=512.0,
-        aws_region='us-east-1',
+        aws_region='ap-southeast-1',
         execution_count=1000
     )
     
@@ -1759,7 +1759,7 @@ def test_carbon_calculation(aws_credentials):
 def test_github_comment_posting(aws_credentials):
     """Test GitHub comment posting"""
     # Setup secret
-    secrets = boto3.client('secretsmanager', region_name='us-east-1')
+    secrets = boto3.client('secretsmanager', region_name='ap-southeast-1')
     secrets.create_secret(
         Name='eco-coder/github-token',
         SecretString='{"token": "ghp_test123"}'

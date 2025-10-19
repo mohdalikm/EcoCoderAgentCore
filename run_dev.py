@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Development runner for EcoCoder Agent
-Loads environment variables and runs the agent in development mode
+Loads environment variables and runs the agent in development mode using Strands SDK and BedrockAgentCore
 """
 
 import os
@@ -24,22 +24,21 @@ try:
 except ImportError:
     print("⚠️  python-dotenv not installed, using system environment")
 
-# Set development mode - use real Strands SDK but still mock AWS services
-os.environ['MOCK_MODE'] = 'false'  # Use real Strands SDK
+# Set development environment
 os.environ['ENVIRONMENT'] = 'development'
 
 print("🌱 Starting EcoCoder Agent in Development Mode")
 print(f"📁 Project root: {project_root}")
-print(f"🔧 Mock mode: {os.getenv('MOCK_MODE')}")
-print(f"🌍 AWS region: {os.getenv('AWS_REGION')}")
+print(f"🌍 AWS region: {os.getenv('AWS_REGION', 'ap-southeast-1')}")
 
 # Check Python version
 print(f"🐍 Python: {sys.version}")
 if sys.version_info >= (3, 11):
     print("✅ Python 3.11+ detected - Strands SDK supported")
 else:
-    print("⚠️  Python < 3.11 detected - falling back to mock mode")
-    os.environ['MOCK_MODE'] = 'true'
+    print("❌ Python < 3.11 required for Strands SDK")
+    print("Please upgrade to Python 3.11 or higher")
+    sys.exit(1)
 
 # Import and run the agent
 if __name__ == "__main__":

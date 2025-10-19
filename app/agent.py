@@ -4,6 +4,8 @@ A Strands-based AI agent for sustainable software development hosted on AWS Bedr
 
 This agent analyzes code changes in GitHub pull requests for performance, quality, and environmental impact,
 providing developers with actionable feedback to write more sustainable software.
+
+Requires Strands SDK and BedrockAgentCore packages to be available in the runtime environment.
 """
 
 import json
@@ -13,57 +15,17 @@ import time
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-# Note: These imports would be available in the actual deployment environment
-# For development/testing, we'll use mock implementations
-MOCK_MODE = os.getenv('MOCK_MODE', 'true').lower() == 'true'
+# Import Strands SDK and BedrockAgentCore
+try:
+    from strands import Agent
+    from bedrock_agentcore import BedrockAgentCoreApp
+    from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+    print("✅ Strands SDK and BedrockAgentCore loaded successfully!")
+except ImportError as e:
+    print(f"❌ Error importing Strands SDK or BedrockAgentCore: {e}")
+    raise ImportError("Required dependencies not available. Please install strands and bedrock_agentcore packages.")
 
-if not MOCK_MODE:
-    try:
-        from strands import Agent
-        from bedrock_agentcore import BedrockAgentCoreApp
-        from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
-        IMPORTS_AVAILABLE = True
-        print("✅ Strands SDK and BedrockAgentCore loaded successfully!")
-    except ImportError as e:
-        IMPORTS_AVAILABLE = False
-        MOCK_MODE = True
-        print(f"⚠️  Strands SDK or BedrockAgentCore not available, falling back to mock mode: {e}")
-else:
-    IMPORTS_AVAILABLE = False
 
-if MOCK_MODE or not IMPORTS_AVAILABLE:
-    # Mock implementations for development environment
-    class BedrockAgentCoreApp:
-        def __init__(self):
-            self.handlers = {}
-        
-        def entrypoint(self, func):
-            self.handlers['invoke'] = func
-            return func
-        
-        def run(self):
-            print("Mock AgentCore app running...")
-    
-    class Agent:
-        def __init__(self, system_prompt: str, session_manager=None):
-            self.system_prompt = system_prompt
-            self.session_manager = session_manager
-            self.tools = {}
-        
-        def tool(self, func):
-            self.tools[func.__name__] = func
-            return func
-        
-        def __call__(self, request: str, session_id: str = None):
-            # Mock agent response
-            class MockResult:
-                def __init__(self, message: str):
-                    self.message = message
-            return MockResult("Analysis completed successfully (mock mode)")
-    
-    class AgentCoreMemorySessionManager:
-        def __init__(self, agentcore_memory_config=None):
-            self.config = agentcore_memory_config
 
 # Import tool implementations
 from app.tools.codeguru_reviewer import analyze_code_quality
@@ -78,16 +40,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize app - use real BedrockAgentCore when available
-if IMPORTS_AVAILABLE and not MOCK_MODE:
-    # Use the actual BedrockAgentCore in production/development with real SDK
-    app = BedrockAgentCoreApp()
-else:
-    # Use mock implementation when SDK not available
-    app = BedrockAgentCoreApp()
+# Initialize app
+app = BedrockAgentCoreApp()
 
 # Configuration
-AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
+AWS_REGION = os.getenv('AWS_REGION', 'ap-southeast-1')
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 GITHUB_TOKEN_SECRET_ARN = os.getenv('GITHUB_TOKEN_SECRET_ARN', 'eco-coder/github-token')
 
@@ -110,22 +67,17 @@ Follow the prescribed workflow to gather data from all tools and synthesize it i
 
 
 def get_session_manager(actor_id: str, session_id: str):
-    """Initialize session manager - real or mock depending on mode"""
-    if IMPORTS_AVAILABLE and not MOCK_MODE:
-        # Use AgentCoreMemorySessionManager when real SDK is available
-        try:
-            memory_config = {
-                'memory_id': f'eco-coder-memory-{actor_id}',
-                'session_id': session_id,
-                'actor_id': actor_id
-            }
-            return AgentCoreMemorySessionManager(agentcore_memory_config=memory_config)
-        except Exception as e:
-            logger.warning(f"Could not initialize AgentCore Memory, using default: {e}")
-            return None
-    else:
-        # Mock session manager for mock mode
-        return AgentCoreMemorySessionManager()
+    """Initialize session manager"""
+    try:
+        memory_config = {
+            'memory_id': f'eco-coder-memory-{actor_id}',
+            'session_id': session_id,
+            'actor_id': actor_id
+        }
+        return AgentCoreMemorySessionManager(agentcore_memory_config=memory_config)
+    except Exception as e:
+        logger.warning(f"Could not initialize AgentCore Memory, using default: {e}")
+        return None
 
 
 def create_agent(session_id: str, repository: str) -> Agent:
@@ -141,12 +93,7 @@ def create_agent(session_id: str, repository: str) -> Agent:
     )
     
     # Import the tool decorator
-    if IMPORTS_AVAILABLE and not MOCK_MODE:
-        from strands import tool
-    else:
-        # Mock tool decorator for fallback
-        def tool(func):
-            return func
+    from strands import tool
     
     # Define tools using @tool decorator
     @tool
@@ -250,22 +197,12 @@ def create_agent(session_id: str, repository: str) -> Agent:
     # Create agent with tools
     tools = [analyze_code, profile_code_performance_tool, calculate_carbon_footprint_tool, post_github_comment_tool]
     
-    if IMPORTS_AVAILABLE and not MOCK_MODE:
-        # Create real Strands agent with tools
-        agent = Agent(
-            system_prompt=system_prompt,
-            tools=tools,
-            session_manager=session_manager
-        )
-    else:
-        # Create mock agent
-        agent = Agent(
-            system_prompt=system_prompt,
-            session_manager=session_manager
-        )
-        # Register tools manually for mock agent
-        for tool_func in tools:
-            agent.tools[tool_func.__name__] = tool_func
+    # Create Strands agent with tools
+    agent = Agent(
+        system_prompt=system_prompt,
+        tools=tools,
+        session_manager=session_manager
+    )
     
     return agent
 
@@ -367,14 +304,9 @@ Repository ARN: arn:aws:codecommit:{pr_info['region']}:{pr_info['account_id']}:{
         # Invoke the agent with the analysis request
         logger.info(f"Invoking agent for session {session_id}")
         
-        if IMPORTS_AVAILABLE and not MOCK_MODE:
-            # Use real Strands SDK
-            result = agent(analysis_request)
-            agent_response = result.content if hasattr(result, 'content') else str(result)
-        else:
-            # Use mock implementation
-            result = agent(analysis_request, session_id=session_id)
-            agent_response = result.message if hasattr(result, 'message') else str(result)
+        # Use Strands SDK
+        result = agent(analysis_request)
+        agent_response = result.content if hasattr(result, 'content') else str(result)
         
         elapsed_time = time.time() - start_time
         logger.info(f"Agent analysis completed in {elapsed_time:.2f} seconds: {agent_response}")
@@ -408,7 +340,6 @@ def main():
     
     # In AgentCore Runtime, this would be managed automatically
     # For local testing, we can simulate webhook events
-    # Always run test in development mode
     
     # Example test payload (GitHub PR webhook format)
     test_payload = {

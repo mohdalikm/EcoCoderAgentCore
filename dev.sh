@@ -47,7 +47,7 @@ install_deps() {
     "$PIP_EXEC" install --upgrade pip
     
     log_info "Installing Strands SDK and BedrockAgentCore..."
-    "$PIP_EXEC" install bedrock-agentcore strands-agents bedrock-agentcore-starter-toolkit
+    "$PIP_EXEC" install strands bedrock-agentcore bedrock-agentcore-starter-toolkit
     
     log_info "Installing other dependencies..."
     "$PIP_EXEC" install codecarbon pandas structlog requests python-dateutil pyyaml
@@ -61,7 +61,6 @@ install_deps() {
 start_agent() {
     check_venv
     log_info "Starting EcoCoder Agent in Development Mode..."
-    export MOCK_MODE=true
     export ENVIRONMENT=development
     "$PYTHON_EXEC" run_dev.py
 }
