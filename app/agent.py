@@ -140,14 +140,16 @@ def create_agent(session_id: str, repository: str) -> Agent:
         session_id=session_id
     )
     
-    # Create agent with system prompt
-    agent = Agent(
-        system_prompt=system_prompt,
-        session_manager=session_manager
-    )
+    # Import the tool decorator
+    if IMPORTS_AVAILABLE and not MOCK_MODE:
+        from strands import tool
+    else:
+        # Mock tool decorator for fallback
+        def tool(func):
+            return func
     
-    # Register tools with agent using @agent.tool decorator
-    @agent.tool
+    # Define tools using @tool decorator
+    @tool
     def analyze_code(repository_arn: str, branch_name: str, commit_sha: str) -> dict:
         """
         Analyze code quality using Amazon CodeGuru Reviewer.
@@ -167,8 +169,8 @@ def create_agent(session_id: str, repository: str) -> Agent:
         logger.info(f"Analyzing code quality for {repository_arn} @ {commit_sha}")
         return analyze_code_quality(repository_arn, branch_name, commit_sha)
     
-    @agent.tool
-    def profile_code_performance(
+    @tool
+    def profile_code_performance_tool(
         profiling_group_name: str,
         start_time: str,
         end_time: str
@@ -192,8 +194,8 @@ def create_agent(session_id: str, repository: str) -> Agent:
         logger.info(f"Profiling performance for group {profiling_group_name}")
         return profile_code_performance(profiling_group_name, start_time, end_time)
     
-    @agent.tool
-    def calculate_carbon_footprint(
+    @tool
+    def calculate_carbon_footprint_tool(
         cpu_time_seconds: float,
         ram_usage_mb: float,
         aws_region: str,
@@ -219,8 +221,8 @@ def create_agent(session_id: str, repository: str) -> Agent:
         logger.info(f"Calculating carbon footprint for {execution_count} executions in {aws_region}")
         return calculate_carbon_footprint(cpu_time_seconds, ram_usage_mb, aws_region, execution_count)
     
-    @agent.tool
-    def post_github_comment(
+    @tool
+    def post_github_comment_tool(
         repository_full_name: str,
         pull_request_number: int,
         report_markdown: str,
@@ -244,6 +246,26 @@ def create_agent(session_id: str, repository: str) -> Agent:
         """
         logger.info(f"Posting comment to PR #{pull_request_number} in {repository_full_name}")
         return post_github_comment(repository_full_name, pull_request_number, report_markdown, update_existing)
+    
+    # Create agent with tools
+    tools = [analyze_code, profile_code_performance_tool, calculate_carbon_footprint_tool, post_github_comment_tool]
+    
+    if IMPORTS_AVAILABLE and not MOCK_MODE:
+        # Create real Strands agent with tools
+        agent = Agent(
+            system_prompt=system_prompt,
+            tools=tools,
+            session_manager=session_manager
+        )
+    else:
+        # Create mock agent
+        agent = Agent(
+            system_prompt=system_prompt,
+            session_manager=session_manager
+        )
+        # Register tools manually for mock agent
+        for tool_func in tools:
+            agent.tools[tool_func.__name__] = tool_func
     
     return agent
 
@@ -344,16 +366,24 @@ Repository ARN: arn:aws:codecommit:{pr_info['region']}:{pr_info['account_id']}:{
         
         # Invoke the agent with the analysis request
         logger.info(f"Invoking agent for session {session_id}")
-        result = agent(analysis_request, session_id=session_id)
+        
+        if IMPORTS_AVAILABLE and not MOCK_MODE:
+            # Use real Strands SDK
+            result = agent(analysis_request)
+            agent_response = result.content if hasattr(result, 'content') else str(result)
+        else:
+            # Use mock implementation
+            result = agent(analysis_request, session_id=session_id)
+            agent_response = result.message if hasattr(result, 'message') else str(result)
         
         elapsed_time = time.time() - start_time
-        logger.info(f"Agent analysis completed in {elapsed_time:.2f} seconds: {result.message}")
+        logger.info(f"Agent analysis completed in {elapsed_time:.2f} seconds: {agent_response}")
         
         return {
             "status": "success",
             "message": "Eco-Coder analysis completed successfully",
             "session_id": session_id,
-            "agent_response": result.message,
+            "agent_response": agent_response,
             "pr_info": pr_info,
             "execution_time_seconds": round(elapsed_time, 2)
         }

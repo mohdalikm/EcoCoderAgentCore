@@ -7,9 +7,10 @@
 set -e
 
 # Configuration
-VENV_DIR=".venv-py311"
+VENV_DIR=".venv"
 PYTHON_EXEC="$VENV_DIR/bin/python"
 PIP_EXEC="$VENV_DIR/bin/pip"
+PYTHON311="/opt/homebrew/bin/python3.11"
 
 # Colors for output
 RED='\033[0;31m'
@@ -35,16 +36,21 @@ check_venv() {
 
 # Install dependencies
 install_deps() {
-    log_info "Setting up development environment..."
+    log_info "Setting up development environment with Python 3.11..."
     
     if [ ! -d "$VENV_DIR" ]; then
-        log_info "Creating virtual environment..."
-        python3 -m venv "$VENV_DIR"
+        log_info "Creating virtual environment with Python 3.11..."
+        "$PYTHON311" -m venv "$VENV_DIR"
     fi
     
     log_info "Installing dependencies..."
     "$PIP_EXEC" install --upgrade pip
-    "$PIP_EXEC" install -r requirements.txt
+    
+    log_info "Installing Strands SDK and BedrockAgentCore..."
+    "$PIP_EXEC" install bedrock-agentcore strands-agents bedrock-agentcore-starter-toolkit
+    
+    log_info "Installing other dependencies..."
+    "$PIP_EXEC" install codecarbon pandas structlog requests python-dateutil pyyaml
     "$PIP_EXEC" install python-dotenv black isort flake8 mypy pytest pytest-cov pytest-mock
     
     log_success "Development environment ready!"

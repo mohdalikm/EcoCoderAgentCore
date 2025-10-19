@@ -33,6 +33,14 @@ print(f"📁 Project root: {project_root}")
 print(f"🔧 Mock mode: {os.getenv('MOCK_MODE')}")
 print(f"🌍 AWS region: {os.getenv('AWS_REGION')}")
 
+# Check Python version
+print(f"🐍 Python: {sys.version}")
+if sys.version_info >= (3, 11):
+    print("✅ Python 3.11+ detected - Strands SDK supported")
+else:
+    print("⚠️  Python < 3.11 detected - falling back to mock mode")
+    os.environ['MOCK_MODE'] = 'true'
+
 # Import and run the agent
 if __name__ == "__main__":
     try:
