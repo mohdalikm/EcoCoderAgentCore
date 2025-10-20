@@ -186,6 +186,15 @@ class AITestDiscovery:
     def __init__(self):
         """Initialize test discovery engine"""
         self.confidence_threshold = 0.7
+        self.aws_helper = AWSHelper()
+        
+        # Try to import requests for README reading
+        try:
+            import requests
+            self.requests = requests
+        except ImportError:
+            logger.warning("requests library not available - README reading will be disabled")
+            self.requests = None
         
     def discover_test_scripts(self, pr_code: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -200,6 +209,9 @@ class AITestDiscovery:
         try:
             logger.info(f"Starting AI test discovery for PR #{pr_code['pr_number']}")
             
+            # Step 1: Read repository README for test instructions
+            readme_analysis = self._read_repository_readme(pr_code)
+            
             # Analyze changed files to understand scope
             changed_files = pr_code['changed_files']
             source_files = [f for f in changed_files if f['is_source_file'] and not f['is_test_file']]
@@ -208,12 +220,13 @@ class AITestDiscovery:
             # Discover related test files using intelligent analysis
             discovered_tests = self._discover_related_tests(source_files, existing_test_files)
             
-            # Generate test execution plan
-            test_plan = self._generate_test_execution_plan(discovered_tests, pr_code)
+            # Generate test execution plan with README insights
+            test_plan = self._generate_test_execution_plan(discovered_tests, pr_code, readme_analysis)
             
             result = {
                 'discovered_tests': discovered_tests,
                 'test_execution_plan': test_plan,
+                'readme_analysis': readme_analysis,
                 'source_files_count': len(source_files),
                 'existing_test_files_count': len(existing_test_files),
                 'primary_language': self._get_primary_language(pr_code['languages']),
@@ -312,19 +325,31 @@ class AITestDiscovery:
         
         return integration_tests
     
-    def _generate_test_execution_plan(self, discovered_tests: List[Dict], pr_code: Dict) -> Dict[str, Any]:
-        """Generate optimized test execution plan"""
+    def _generate_test_execution_plan(self, discovered_tests: List[Dict], pr_code: Dict, readme_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate optimized test execution plan with README insights"""
         # Sort tests by priority and confidence
         high_priority = [t for t in discovered_tests if t['priority'] == 'high']
         medium_priority = [t for t in discovered_tests if t['priority'] == 'medium']
         
+        # Use README test commands if available and confident
+        readme_commands = []
+        if readme_analysis['readme_found'] and readme_analysis['confidence'] > 0.5:
+            readme_commands = readme_analysis['test_commands']
+            logger.info(f"Using README test commands: {readme_commands}")
+        
+        # Generate framework commands as fallback
+        framework_commands = self._generate_framework_commands(pr_code['languages'])
+        
         return {
-            'execution_order': ['high_priority', 'medium_priority'],
+            'execution_order': ['readme_commands', 'high_priority', 'medium_priority'],
+            'readme_commands': readme_commands,
             'high_priority_tests': high_priority,
             'medium_priority_tests': medium_priority,
             'estimated_duration_minutes': len(discovered_tests) * 2,  # 2 min per test avg
             'parallel_execution': len(discovered_tests) > 5,
-            'framework_commands': self._generate_framework_commands(pr_code['languages'])
+            'framework_commands': framework_commands,
+            'setup_commands': readme_analysis.get('setup_commands', []),
+            'dependencies': readme_analysis.get('dependencies', [])
         }
     
     def _generate_framework_commands(self, languages: List[str]) -> Dict[str, str]:
@@ -366,6 +391,233 @@ class AITestDiscovery:
         
         total_confidence = sum(test.get('confidence', 0.5) for test in tests)
         return min(total_confidence / len(tests), 1.0)
+    
+    def _read_repository_readme(self, pr_code: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Read the repository's README file to extract test running instructions
+        
+        Args:
+            pr_code: PR code information containing repository details
+            
+        Returns:
+            Dictionary containing README analysis and extracted test commands
+        """
+        try:
+            if not self.requests:
+                logger.warning("requests library not available - using fallback test instructions")
+                return self._generate_fallback_test_instructions()
+                
+            logger.info(f"Reading README from repository: {pr_code['repository']}")
+            
+            # Get GitHub token from environment or AWS Secrets Manager
+            github_token = None
+            try:
+                github_token = self.aws_helper.get_secret_value('github-token')['SecretString']
+            except Exception as e:
+                logger.warning(f"Could not retrieve GitHub token: {e}")
+            
+            # Common README file names to check
+            readme_files = ['README.md', 'README.rst', 'README.txt', 'README', 'readme.md', 'Readme.md']
+            readme_content = None
+            found_readme = None
+            
+            # GitHub API headers
+            headers = {'Accept': 'application/vnd.github.v3+json'}
+            if github_token:
+                headers['Authorization'] = f'token {github_token}'
+            
+            # Try to find and read README file
+            for readme_name in readme_files:
+                try:
+                    url = f"https://api.github.com/repos/{pr_code['repository']}/contents/{readme_name}"
+                    response = self.requests.get(url, headers=headers)
+                    
+                    if response.status_code == 200:
+                        import base64
+                        content_data = response.json()
+                        readme_content = base64.b64decode(content_data['content']).decode('utf-8')
+                        found_readme = readme_name
+                        logger.info(f"Successfully read {readme_name} ({len(readme_content)} characters)")
+                        break
+                        
+                except Exception as e:
+                    logger.debug(f"Could not read {readme_name}: {e}")
+                    continue
+            
+            if not readme_content:
+                logger.warning("No README file found in repository")
+                return self._generate_fallback_test_instructions()
+            
+            # Extract test instructions from README
+            test_instructions = self._extract_test_instructions(readme_content, found_readme)
+            
+            return {
+                'readme_found': True,
+                'readme_file': found_readme,
+                'readme_length': len(readme_content),
+                'test_commands': test_instructions['commands'],
+                'setup_commands': test_instructions['setup'],
+                'dependencies': test_instructions['dependencies'],
+                'test_frameworks': test_instructions['frameworks'],
+                'confidence': test_instructions['confidence']
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to read repository README: {str(e)}")
+            return self._generate_fallback_test_instructions()
+    
+    def _extract_test_instructions(self, readme_content: str, filename: str) -> Dict[str, Any]:
+        """
+        Extract test running instructions from README content
+        
+        Args:
+            readme_content: The README file content
+            filename: The README filename
+            
+        Returns:
+            Dictionary containing extracted test instructions
+        """
+        import re
+        
+        logger.info(f"Extracting test instructions from {filename}")
+        
+        # Convert to lowercase for case-insensitive matching
+        content_lower = readme_content.lower()
+        
+        # Initialize result structure
+        result = {
+            'commands': [],
+            'setup': [],
+            'dependencies': [],
+            'frameworks': [],
+            'confidence': 0.0
+        }
+        
+        # Patterns to identify test-related sections
+        test_section_patterns = [
+            r'##\s*test.*?(?=##|\n\n|\Z)',
+            r'##\s*running.*test.*?(?=##|\n\n|\Z)',
+            r'##\s*development.*?(?=##|\n\n|\Z)',
+            r'##\s*usage.*?(?=##|\n\n|\Z)',
+            r'##\s*getting.*started.*?(?=##|\n\n|\Z)',
+            r'###\s*test.*?(?=###|\n\n|\Z)',
+            r'#\s*test.*?(?=#|\n\n|\Z)'
+        ]
+        
+        # Extract test-related sections
+        test_sections = []
+        for pattern in test_section_patterns:
+            matches = re.findall(pattern, readme_content, re.IGNORECASE | re.DOTALL)
+            test_sections.extend(matches)
+        
+        # If no dedicated test sections found, search the entire README
+        if not test_sections:
+            test_sections = [readme_content]
+        
+        # Extract commands from code blocks
+        code_block_patterns = [
+            r'```(?:bash|shell|sh|console)?\n(.*?)\n```',
+            r'`([^`\n]+)`',
+            r'^\s*\$\s*(.+)$',
+            r'^\s*>\s*(.+)$'
+        ]
+        
+        all_commands = []
+        for section in test_sections:
+            for pattern in code_block_patterns:
+                matches = re.findall(pattern, section, re.MULTILINE | re.DOTALL)
+                for match in matches:
+                    if isinstance(match, tuple):
+                        match = match[0] if match else ''
+                    all_commands.extend(line.strip() for line in match.split('\n') if line.strip())
+        
+        # Filter for test-related commands
+        test_keywords = [
+            'test', 'pytest', 'unittest', 'nose', 'tox', 'npm test', 'yarn test',
+            'mvn test', 'gradle test', 'go test', 'cargo test', 'make test',
+            'python -m pytest', 'python -m unittest', 'jest', 'mocha', 'jasmine'
+        ]
+        
+        setup_keywords = [
+            'pip install', 'npm install', 'yarn install', 'mvn install',
+            'gradle install', 'go mod', 'cargo build', 'make install',
+            'requirements.txt', 'package.json', 'pom.xml', 'build.gradle'
+        ]
+        
+        # Categorize commands
+        for cmd in all_commands:
+            cmd_lower = cmd.lower()
+            
+            # Skip comments and empty lines
+            if cmd.startswith('#') or not cmd.strip():
+                continue
+                
+            # Test commands
+            if any(keyword in cmd_lower for keyword in test_keywords):
+                result['commands'].append(cmd.strip())
+                result['confidence'] += 0.3
+                
+            # Setup/dependency commands
+            elif any(keyword in cmd_lower for keyword in setup_keywords):
+                result['setup'].append(cmd.strip())
+                result['confidence'] += 0.1
+        
+        # Detect frameworks from README content
+        framework_indicators = {
+            'pytest': ['pytest', 'py.test'],
+            'unittest': ['unittest', 'python -m unittest'],
+            'jest': ['jest', 'npm test', 'yarn test'],
+            'mocha': ['mocha'],
+            'maven': ['mvn test', 'maven'],
+            'gradle': ['gradle test', 'gradlew'],
+            'go': ['go test'],
+            'cargo': ['cargo test'],
+            'tox': ['tox']
+        }
+        
+        for framework, indicators in framework_indicators.items():
+            if any(indicator in content_lower for indicator in indicators):
+                result['frameworks'].append(framework)
+                result['confidence'] += 0.2
+        
+        # Extract dependencies from common files mentioned
+        dependency_patterns = [
+            r'requirements\.txt',
+            r'package\.json',
+            r'pom\.xml',
+            r'build\.gradle',
+            r'Cargo\.toml',
+            r'go\.mod'
+        ]
+        
+        for pattern in dependency_patterns:
+            if re.search(pattern, content_lower):
+                result['dependencies'].append(pattern.replace('\\', ''))
+                result['confidence'] += 0.1
+        
+        # Normalize confidence score
+        result['confidence'] = min(result['confidence'], 1.0)
+        
+        logger.info(f"Extracted {len(result['commands'])} test commands with confidence {result['confidence']:.2f}")
+        logger.info(f"Test commands found: {result['commands']}")
+        logger.info(f"Frameworks detected: {result['frameworks']}")
+        
+        return result
+    
+    def _generate_fallback_test_instructions(self) -> Dict[str, Any]:
+        """Generate fallback test instructions when README is not available"""
+        logger.info("Generating fallback test instructions")
+        
+        return {
+            'readme_found': False,
+            'readme_file': None,
+            'readme_length': 0,
+            'test_commands': [],
+            'setup_commands': [],
+            'dependencies': [],
+            'test_frameworks': [],
+            'confidence': 0.0
+        }
 
 
 class CodeBuildProfilerRunner:
@@ -568,15 +820,16 @@ class CodeBuildProfilerRunner:
             raise ProfilerError(f"Profiling group creation failed: {str(e)}")
     
     def _ensure_codebuild_project(self, pr_code: Dict[str, Any]) -> str:
-        """Ensure CodeBuild project exists or use the AgentCore one"""
+        """Ensure CodeBuild project exists - using AgentCore project with GitHub source override"""
         try:
-            # Use the existing AgentCore CodeBuild project
+            # Use the existing AgentCore CodeBuild project with GitHub source override
+            # This approach follows AWS documentation for using sourceTypeOverride and sourceLocationOverride
             project_name = "bedrock-agentcore-ecocoderagentcore-builder"
             
             # Verify the project exists
             try:
                 self.codebuild_client.batch_get_projects(names=[project_name])
-                logger.info(f"Using existing CodeBuild project: {project_name}")
+                logger.info(f"Using existing CodeBuild project with GitHub source override: {project_name}")
                 return project_name
             except ClientError as e:
                 if e.response['Error']['Code'] == 'ResourceNotFoundException':
@@ -623,6 +876,17 @@ class CodeBuildProfilerRunner:
         
         test_plan = test_discovery['test_execution_plan']
         primary_language = test_discovery['primary_language']
+        readme_analysis = test_discovery.get('readme_analysis', {})
+        
+        logger.info(f"Generating buildspec for primary language: {primary_language}")
+        logger.info(f"Profiling group: {profiling_group_name}")
+        logger.info(f"Test plan execution order: {test_plan.get('execution_order', [])}")
+        
+        # Log README analysis results
+        if readme_analysis.get('readme_found'):
+            logger.info(f"README analysis: Found {readme_analysis['readme_file']} with {len(readme_analysis.get('test_commands', []))} test commands (confidence: {readme_analysis.get('confidence', 0):.2f})")
+        else:
+            logger.info("README analysis: No README found or low confidence, using fallback test discovery")
         
         buildspec = {
             'version': 0.2,
@@ -658,73 +922,248 @@ class CodeBuildProfilerRunner:
             }
         }
         
-        # Add language-specific setup
+        # Add language-specific setup and README-based commands
         if primary_language == 'python':
+            logger.info("Setting up Python-specific buildspec configuration")
             buildspec['phases']['install']['runtime-versions']['python'] = '3.11'
-            buildspec['phases']['install']['commands'].extend([
-                'pip install --upgrade pip',
-                'pip install pytest pytest-cov codecov',
-                'pip install -r requirements.txt || echo "No requirements.txt found"'
-            ])
+            
+            # Use README setup commands if available
+            setup_commands = test_plan.get('setup_commands', [])
+            if setup_commands:
+                logger.info(f"Using README setup commands: {setup_commands}")
+                buildspec['phases']['install']['commands'].extend([
+                    'echo "Installing dependencies from README instructions"'
+                ] + setup_commands)
+            else:
+                buildspec['phases']['install']['commands'].extend([
+                    'echo "Installing Python dependencies"',
+                    'pip install --upgrade pip',
+                    'pip install pytest pytest-cov codecov',
+                    'pip install -r requirements.txt || echo "No requirements.txt found"'
+                ])
             
             # Add profiler agent for Python
             buildspec['phases']['pre_build']['commands'].extend([
+                'echo "Installing CodeGuru Profiler agent for Python"',
                 'pip install codeguru-profiler-agent',
                 'export PYTHONPATH="${PYTHONPATH}:."'
             ])
             
-            # Add test commands
-            for test_type in ['high_priority_tests', 'medium_priority_tests']:
-                tests = test_plan.get(test_type, [])
-                if tests:
-                    test_files = ' '.join([t['filename'] for t in tests if not '*' in t['filename']])
-                    if test_files:
-                        buildspec['phases']['build']['commands'].append(
-                            f'python -m pytest {test_files} -v --tb=short --junitxml=test-results.xml || echo "Tests completed with issues"'
-                        )
+            # Prioritize README test commands
+            readme_commands = test_plan.get('readme_commands', [])
+            if readme_commands:
+                logger.info(f"Using README test commands: {readme_commands}")
+                buildspec['phases']['build']['commands'].extend([
+                    'echo "Running tests based on README instructions"'
+                ])
+                for cmd in readme_commands:
+                    # Sanitize and add test commands from README
+                    safe_cmd = cmd.strip()
+                    if safe_cmd and not safe_cmd.startswith('#'):
+                        buildspec['phases']['build']['commands'].append(f'{safe_cmd} || echo "README test command completed with issues"')
+            else:
+                # Fallback to discovered test files
+                logger.info("No README test commands found, using discovered test files")
+                high_priority_tests = test_plan.get('high_priority_tests', [])
+                medium_priority_tests = test_plan.get('medium_priority_tests', [])
+                
+                logger.info(f"High priority tests found: {len(high_priority_tests)}")
+                logger.info(f"Medium priority tests found: {len(medium_priority_tests)}")
+                
+                for test_type, tests in [('high_priority_tests', high_priority_tests), ('medium_priority_tests', medium_priority_tests)]:
+                    if tests:
+                        # Filter out pattern-based tests that contain wildcards
+                        concrete_tests = [t for t in tests if not '*' in t['filename']]
+                        pattern_tests = [t for t in tests if '*' in t['filename']]
+                        
+                        logger.info(f"{test_type} - Concrete test files: {[t['filename'] for t in concrete_tests]}")
+                        logger.info(f"{test_type} - Pattern-based tests: {[t['filename'] for t in pattern_tests]}")
+                        
+                        if concrete_tests:
+                            test_files = ' '.join([t['filename'] for t in concrete_tests])
+                            test_command = f'python -m pytest {test_files} -v --tb=short --junitxml=test-results.xml || echo "Tests completed with issues"'
+                            logger.info(f"Adding test command: {test_command}")
+                            buildspec['phases']['build']['commands'].append(f'echo "Running {test_type}: {test_files}"')
+                            buildspec['phases']['build']['commands'].append(test_command)
+                        
+                        # Handle pattern-based tests
+                        for pattern_test in pattern_tests:
+                            pattern = pattern_test['filename']
+                            pattern_command = f'find . -name "{pattern.split("/")[-1]}" -type f | head -10 | xargs python -m pytest -v --tb=short || echo "Pattern tests completed with issues"'
+                            logger.info(f"Adding pattern test command for {pattern}: {pattern_command}")
+                            buildspec['phases']['build']['commands'].append(f'echo "Running pattern-based tests: {pattern}"')
+                            buildspec['phases']['build']['commands'].append(pattern_command)
         
         elif primary_language == 'javascript':
+            logger.info("Setting up JavaScript-specific buildspec configuration")
             buildspec['phases']['install']['runtime-versions']['nodejs'] = '18'
-            buildspec['phases']['install']['commands'].extend([
-                'npm install',
-                'npm install --global @aws/codeguru-profiler-nodejs-agent'
-            ])
             
-            buildspec['phases']['build']['commands'].append(
-                'npm test || echo "Tests completed with issues"'
-            )
+            # Use README setup commands if available
+            setup_commands = test_plan.get('setup_commands', [])
+            if setup_commands:
+                logger.info(f"Using README setup commands: {setup_commands}")
+                buildspec['phases']['install']['commands'].extend([
+                    'echo "Installing dependencies from README instructions"'
+                ] + setup_commands)
+            else:
+                buildspec['phases']['install']['commands'].extend([
+                    'echo "Installing Node.js dependencies"',
+                    'npm install',
+                    'npm install --global @aws/codeguru-profiler-nodejs-agent'
+                ])
+            
+            # Use README test commands or fallback to npm test
+            readme_commands = test_plan.get('readme_commands', [])
+            if readme_commands:
+                logger.info(f"Using README test commands: {readme_commands}")
+                buildspec['phases']['build']['commands'].extend([
+                    'echo "Running tests based on README instructions"'
+                ])
+                for cmd in readme_commands:
+                    safe_cmd = cmd.strip()
+                    if safe_cmd and not safe_cmd.startswith('#'):
+                        buildspec['phases']['build']['commands'].append(f'{safe_cmd} || echo "README test command completed with issues"')
+            else:
+                buildspec['phases']['build']['commands'].append(
+                    'npm test || echo "Tests completed with issues"'
+                )
+        
+        else:
+            logger.warning(f"Unknown primary language '{primary_language}', using generic setup")
+            
+            # Still try to use README commands for unknown languages
+            readme_commands = test_plan.get('readme_commands', [])
+            if readme_commands:
+                logger.info(f"Using README test commands for unknown language: {readme_commands}")
+                buildspec['phases']['build']['commands'].extend([
+                    'echo "Running tests based on README instructions"'
+                ])
+                for cmd in readme_commands:
+                    safe_cmd = cmd.strip()
+                    if safe_cmd and not safe_cmd.startswith('#'):
+                        buildspec['phases']['build']['commands'].append(f'{safe_cmd} || echo "README test command completed with issues"')
+            else:
+                buildspec['phases']['build']['commands'].append(
+                    'echo "Generic test execution - language-specific setup not available"'
+                )
+        
+        # Add some basic verification commands
+        buildspec['phases']['pre_build']['commands'].extend([
+            'echo "=== Environment Information ==="',
+            'pwd',
+            'ls -la',
+            'env | grep ECOCODER || echo "No ECOCODER env vars found"',
+            'env | grep AWS_CODEGURU || echo "No CodeGuru env vars found"',
+            'git status || echo "Not a git repository"',
+            'git log --oneline -5 || echo "No git history available"',
+            'echo "=== End Environment Information ==="'
+        ])
+        
+        logger.info("Generated buildspec with phases: " + ", ".join(buildspec['phases'].keys()))
+        logger.info(f"Total install commands: {len(buildspec['phases']['install']['commands'])}")
+        logger.info(f"Total pre_build commands: {len(buildspec['phases']['pre_build']['commands'])}")
+        logger.info(f"Total build commands: {len(buildspec['phases']['build']['commands'])}")
+        logger.info(f"Total post_build commands: {len(buildspec['phases']['post_build']['commands'])}")
         
         return buildspec
     
     def _start_codebuild_execution(self, project_name: str, pr_code: Dict[str, Any], 
                                  buildspec: Dict[str, Any]) -> Dict[str, Any]:
-        """Start CodeBuild execution"""
+        """Start CodeBuild execution with detailed logging"""
         try:
+            # Log the buildspec that will be used
+            logger.info(f"Starting CodeBuild with project: {project_name}")
+            logger.info(f"Source version (commit SHA): {pr_code['head_sha']}")
+            logger.info(f"Repository: {pr_code['repository']}")
+            logger.info(f"PR number: {pr_code['pr_number']}")
+            
+            # Log buildspec details (but not sensitive information)
+            buildspec_summary = {
+                'version': buildspec.get('version'),
+                'phases': list(buildspec.get('phases', {}).keys()),
+                'artifacts': buildspec.get('artifacts', {}).get('files', [])
+            }
+            logger.info(f"Buildspec summary: {json.dumps(buildspec_summary, indent=2)}")
+            
+            # Log install commands for debugging
+            install_commands = buildspec.get('phases', {}).get('install', {}).get('commands', [])
+            if install_commands:
+                logger.info(f"Install commands: {install_commands}")
+            
+            # Log build commands for debugging
+            build_commands = buildspec.get('phases', {}).get('build', {}).get('commands', [])
+            if build_commands:
+                logger.info(f"Build commands: {build_commands}")
+            
+            # Prepare environment variables
+            env_vars = [
+                {
+                    'name': 'ECOCODER_PR_NUMBER',
+                    'value': str(pr_code['pr_number'])
+                },
+                {
+                    'name': 'ECOCODER_REPOSITORY',
+                    'value': pr_code['repository']
+                },
+                {
+                    'name': 'ECOCODER_HEAD_SHA',
+                    'value': pr_code['head_sha']
+                },
+                {
+                    'name': 'ECOCODER_BASE_SHA', 
+                    'value': pr_code.get('base_sha', '')
+                },
+                {
+                    'name': 'ECOCODER_HEAD_REF',
+                    'value': pr_code.get('head_ref', '')
+                },
+                {
+                    'name': 'ECOCODER_BASE_REF',
+                    'value': pr_code.get('base_ref', '')
+                }
+            ]
+            
+            env_var_summary = [f"{var['name']}={var['value']}" for var in env_vars]
+            logger.info(f"Environment variables being set: {env_var_summary}")
+            logger.info(f"Starting CodeBuild with GitHub source: {pr_code['clone_url']}")
+            logger.info(f"Source version (commit SHA): {pr_code['head_sha']}")
+            
+            # Start the build with GitHub source overrides
             response = self.codebuild_client.start_build(
                 projectName=project_name,
                 sourceVersion=pr_code['head_sha'],
+                sourceTypeOverride='GITHUB',
+                sourceLocationOverride=pr_code['clone_url'],
                 buildspecOverride=json.dumps(buildspec),
-                environmentVariablesOverride=[
-                    {
-                        'name': 'ECOCODER_PR_NUMBER',
-                        'value': str(pr_code['pr_number'])
-                    },
-                    {
-                        'name': 'ECOCODER_REPOSITORY',
-                        'value': pr_code['repository']
-                    }
-                ]
+                environmentVariablesOverride=env_vars
             )
             
-            logger.info(f"Started CodeBuild execution: {response['build']['id']}")
+            build_id = response['build']['id']
+            logger.info(f"Successfully started CodeBuild execution: {build_id}")
+            
+            # Log initial build details
+            build = response['build']
+            logger.info(f"Build ARN: {build.get('arn', 'N/A')}")
+            logger.info(f"Build status: {build.get('buildStatus', 'N/A')}")
+            logger.info(f"Build start time: {build.get('startTime', 'N/A')}")
+            
             return response
             
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            error_message = e.response['Error']['Message']
+            logger.error(f"CodeBuild ClientError - Code: {error_code}, Message: {error_message}")
+            logger.error(f"Full error response: {json.dumps(e.response, indent=2, default=str)}")
+            raise ProfilerError(f"CodeBuild start failed: {error_message}")
+            
         except Exception as e:
-            logger.error(f"Failed to start CodeBuild: {str(e)}")
+            logger.error(f"Unexpected error starting CodeBuild: {str(e)}")
+            logger.error(f"Project name: {project_name}")
+            logger.error(f"Source version: {pr_code.get('head_sha', 'N/A')}")
             raise ProfilerError(f"CodeBuild start failed: {str(e)}")
     
     def _wait_for_build_completion(self, build_id: str) -> Dict[str, Any]:
-        """Wait for CodeBuild to complete"""
+        """Wait for CodeBuild to complete with detailed logging"""
         max_attempts = 60  # 30 minutes with 30-second intervals
         attempt = 0
         
@@ -734,12 +1173,76 @@ class CodeBuildProfilerRunner:
                 build = response['builds'][0]
                 
                 status = build['buildStatus']
+                current_phase = build.get('currentPhase', 'UNKNOWN')
+                phases = build.get('phases', [])
+                
+                # Log current phase and any phase details
+                logger.info(f"Build {build_id} status: {status}, current phase: {current_phase}, attempt {attempt + 1}/{max_attempts}")
+                
+                # Log phase details for debugging
+                if phases:
+                    for phase in phases:
+                        phase_type = phase.get('phaseType', 'UNKNOWN')
+                        phase_status = phase.get('phaseStatus', 'UNKNOWN')
+                        duration = phase.get('durationInSeconds', 0)
+                        
+                        if phase_status in ['FAILED', 'FAULT', 'TIMED_OUT']:
+                            logger.error(f"Build phase {phase_type} failed with status {phase_status} after {duration}s")
+                            
+                            # Log detailed phase context if available
+                            contexts = phase.get('contexts', [])
+                            for context in contexts:
+                                logger.error(f"Phase context - Status: {context.get('statusCode')}, Message: {context.get('message')}")
+                        elif phase_status == 'SUCCEEDED':
+                            logger.info(f"Build phase {phase_type} completed successfully in {duration}s")
+                        elif phase_status in ['IN_PROGRESS']:
+                            logger.info(f"Build phase {phase_type} is in progress ({duration}s elapsed)")
                 
                 if status in ['SUCCEEDED', 'FAILED', 'STOPPED', 'TIMED_OUT']:
-                    logger.info(f"Build {build_id} completed with status: {status}")
+                    # Final logging with complete build information
+                    total_duration = build.get('timeoutInMinutes', 0)
+                    start_time = build.get('startTime')
+                    end_time = build.get('endTime')
+                    
+                    logger.info(f"Build {build_id} completed with final status: {status}")
+                    logger.info(f"Build duration: {total_duration} minutes")
+                    
+                    if start_time:
+                        logger.info(f"Build started at: {start_time}")
+                    if end_time:
+                        logger.info(f"Build ended at: {end_time}")
+                    
+                    # Log environment information
+                    environment = build.get('environment', {})
+                    if environment:
+                        logger.info(f"Build environment - Type: {environment.get('type')}, "
+                                  f"Image: {environment.get('image')}, "
+                                  f"Compute: {environment.get('computeType')}")
+                    
+                    # Log source information
+                    source = build.get('source', {})
+                    if source:
+                        logger.info(f"Build source - Type: {source.get('type')}, "
+                                  f"Location: {source.get('location')}")
+                    
+                    # Log logs information for troubleshooting
+                    logs = build.get('logs', {})
+                    if logs:
+                        log_group = logs.get('groupName')
+                        log_stream = logs.get('streamName')
+                        deep_link = logs.get('deepLink')
+                        
+                        if log_group and log_stream:
+                            logger.info(f"Build logs available at - Group: {log_group}, Stream: {log_stream}")
+                        if deep_link:
+                            logger.info(f"CloudWatch logs deep link: {deep_link}")
+                    
+                    # If build failed, log additional failure information
+                    if status == 'FAILED':
+                        self._log_build_failure_details(build)
+                    
                     return response
                 
-                logger.info(f"Build {build_id} in progress, attempt {attempt + 1}/{max_attempts}")
                 time.sleep(30)
                 attempt += 1
                 
@@ -749,6 +1252,86 @@ class CodeBuildProfilerRunner:
                 attempt += 1
         
         raise ProfilerError(f"Build {build_id} timed out after {max_attempts} attempts")
+    
+    def _log_build_failure_details(self, build: Dict[str, Any]) -> None:
+        """Log detailed information about build failures"""
+        try:
+            build_id = build.get('id', 'unknown')
+            logger.error(f"=== BUILD FAILURE ANALYSIS FOR {build_id} ===")
+            
+            # Log basic failure information
+            logger.error(f"Build Status: {build.get('buildStatus', 'UNKNOWN')}")
+            logger.error(f"Build Complete: {build.get('buildComplete', False)}")
+            
+            # Log phase failures in detail
+            phases = build.get('phases', [])
+            failed_phases = [p for p in phases if p.get('phaseStatus') in ['FAILED', 'FAULT', 'TIMED_OUT']]
+            
+            if failed_phases:
+                logger.error(f"Failed phases count: {len(failed_phases)}")
+                for i, phase in enumerate(failed_phases):
+                    logger.error(f"Failed Phase {i+1}:")
+                    logger.error(f"  Type: {phase.get('phaseType', 'UNKNOWN')}")
+                    logger.error(f"  Status: {phase.get('phaseStatus', 'UNKNOWN')}")
+                    logger.error(f"  Duration: {phase.get('durationInSeconds', 0)} seconds")
+                    logger.error(f"  Start Time: {phase.get('startTime', 'N/A')}")
+                    logger.error(f"  End Time: {phase.get('endTime', 'N/A')}")
+                    
+                    # Log detailed error contexts
+                    contexts = phase.get('contexts', [])
+                    if contexts:
+                        logger.error(f"  Error Contexts:")
+                        for j, context in enumerate(contexts):
+                            logger.error(f"    Context {j+1}:")
+                            logger.error(f"      Status Code: {context.get('statusCode', 'N/A')}")
+                            logger.error(f"      Message: {context.get('message', 'N/A')}")
+            
+            # Log environment variables that might affect the build
+            env_vars = build.get('environment', {}).get('environmentVariables', [])
+            if env_vars:
+                logger.info("Environment variables:")
+                for var in env_vars:
+                    name = var.get('name', 'unknown')
+                    # Don't log sensitive values
+                    if 'TOKEN' in name.upper() or 'SECRET' in name.upper() or 'KEY' in name.upper():
+                        logger.info(f"  {name}: [REDACTED]")
+                    else:
+                        logger.info(f"  {name}: {var.get('value', 'N/A')}")
+            
+            # Log artifacts information
+            artifacts = build.get('artifacts', {})
+            if artifacts:
+                logger.info(f"Artifacts location: {artifacts.get('location', 'N/A')}")
+                artifact_override = build.get('artifactsOverride', {})
+                if artifact_override:
+                    logger.info(f"Artifact override type: {artifact_override.get('type', 'N/A')}")
+            
+            # Log service role information
+            service_role = build.get('serviceRole')
+            if service_role:
+                logger.info(f"Service role: {service_role}")
+            
+            # Log timeout information
+            timeout = build.get('timeoutInMinutes', 0)
+            logger.info(f"Timeout setting: {timeout} minutes")
+            
+            # Try to get recent CloudWatch logs if available
+            logs = build.get('logs', {})
+            if logs:
+                log_group = logs.get('groupName')
+                log_stream = logs.get('streamName')
+                
+                if log_group and log_stream:
+                    logger.error(f"Recent build logs should be available in CloudWatch:")
+                    logger.error(f"  Log Group: {log_group}")
+                    logger.error(f"  Log Stream: {log_stream}")
+                    logger.error(f"  AWS CLI command: aws logs get-log-events --log-group-name '{log_group}' --log-stream-name '{log_stream}' --start-time {int((datetime.utcnow() - timedelta(hours=1)).timestamp() * 1000)}")
+            
+            logger.error("=== END BUILD FAILURE ANALYSIS ===")
+            
+        except Exception as e:
+            logger.error(f"Failed to log build failure details: {e}")
+    
     
     def _collect_profiling_data(self, profiling_group_name: str, 
                                start_time: datetime, end_time: datetime) -> Dict[str, Any]:

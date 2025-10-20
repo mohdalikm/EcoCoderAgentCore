@@ -22,11 +22,29 @@
             "Action": [
                 "s3:GetObject",
                 "s3:GetObjectVersion",
-                "s3:PutObject"
+                "s3:PutObject",
+                "s3:ListBucket",
+                "s3:ListBucketVersions",
+                "s3:GetBucketVersioning",
+                "s3:GetBucketLocation"
             ],
             "Resource": [
                 "arn:aws:s3:::bedrock-agentcore-codebuild-sources-*/*",
                 "arn:aws:s3:::codepipeline-*/*"
+            ]
+        },
+        {
+            "Sid": "S3BucketPermissions",
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket",
+                "s3:ListBucketVersions",
+                "s3:GetBucketVersioning",
+                "s3:GetBucketLocation"
+            ],
+            "Resource": [
+                "arn:aws:s3:::bedrock-agentcore-codebuild-sources-*",
+                "arn:aws:s3:::codepipeline-*"
             ]
         },
         {

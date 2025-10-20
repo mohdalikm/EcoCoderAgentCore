@@ -539,25 +539,37 @@ Repository ARN: arn:aws:codecommit:{pr_info['region']}:{pr_info['account_id']}:{
         logger.info(f"Invoking agent for session {session_id}")
         logger.info(f"Analysis request: {analysis_request[:500]}...")  # Log first 500 chars
         
+        # Set PR payload as environment variable for tools to access
+        import os
+        os.environ['ECOCODER_PR_PAYLOAD'] = json.dumps(payload)
+        logger.info("✅ Set PR payload in environment for tool access")
+        
         # Use Strands SDK
         logger.info("Starting agent execution...")
-        result = agent(analysis_request)
-        logger.info(f"Agent execution completed. Result type: {type(result)}")
+        try:
+            result = agent(analysis_request)
+            logger.info(f"Agent execution completed. Result type: {type(result)}")
+            
+            agent_response = result.content if hasattr(result, 'content') else str(result)
+            logger.info(f"Agent response preview: {str(agent_response)[:200]}...")
+            
+            elapsed_time = time.time() - start_time
+            logger.info(f"Agent analysis completed in {elapsed_time:.2f} seconds: {agent_response}")
+            
+            return {
+                "status": "success",
+                "message": "Eco-Coder analysis completed successfully",
+                "session_id": session_id,
+                "agent_response": agent_response,
+                "pr_info": pr_info,
+                "execution_time_seconds": round(elapsed_time, 2)
+            }
         
-        agent_response = result.content if hasattr(result, 'content') else str(result)
-        logger.info(f"Agent response preview: {str(agent_response)[:200]}...")
-        
-        elapsed_time = time.time() - start_time
-        logger.info(f"Agent analysis completed in {elapsed_time:.2f} seconds: {agent_response}")
-        
-        return {
-            "status": "success",
-            "message": "Eco-Coder analysis completed successfully",
-            "session_id": session_id,
-            "agent_response": agent_response,
-            "pr_info": pr_info,
-            "execution_time_seconds": round(elapsed_time, 2)
-        }
+        finally:
+            # Clean up environment variable
+            if 'ECOCODER_PR_PAYLOAD' in os.environ:
+                del os.environ['ECOCODER_PR_PAYLOAD']
+                logger.info("✅ Cleaned up PR payload from environment")
         
     except Exception as e:
         elapsed_time = time.time() - start_time
