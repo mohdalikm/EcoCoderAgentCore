@@ -22,11 +22,17 @@ The EcoCoder Agent is built with the Strands SDK and deployed on AWS Bedrock Age
 ### 3. Required Permissions
 Your AWS user/role needs permissions for:
 - Bedrock AgentCore (agent management, runtime invocation)
+- **Bedrock AgentCore Memory** (ListMemories, CreateMemory, GetMemory, etc.)
 - ECR (container registry)
 - CodeBuild (for cloud builds)
 - IAM (role creation/management)
 - CloudWatch (logs and monitoring)
 - SSM Parameter Store (configuration storage)
+
+**⚠️ Important**: If you encounter memory permission errors, run the setup script:
+```bash
+./scripts/setup-memory-permissions.sh
+```
 
 ## Setup Instructions
 
@@ -66,9 +72,43 @@ agentcore --help
 agentcore configure list
 ```
 
+### 4. Setup Memory Permissions (Required)
+
+The EcoCoder agent uses AgentCore Memory for session management and context tracking. You must configure the necessary IAM permissions:
+
+```bash
+# Run the memory permissions setup script
+./scripts/setup-memory-permissions.sh
+```
+
+This script will:
+- Find your AgentCore runtime execution role(s)
+- Create/update the memory permissions policy
+- Attach the policy to your runtime role(s)
+- Provide detailed status and troubleshooting information
+
+**Memory Permissions Included:**
+- `bedrock-agentcore:ListMemories` - List available memories
+- `bedrock-agentcore:CreateMemory` - Create new memory resources
+- `bedrock-agentcore:GetMemory` - Retrieve memory details
+- `bedrock-agentcore:BatchCreateMemoryRecords` - Create memory records
+- `bedrock-agentcore:ListMemoryRecords` - List memory records
+- `bedrock-agentcore:RetrieveMemoryRecords` - Query memory semantically
+
 ## Deployment Process
 
-### 1. Initial Deployment
+### 1. Setup Memory Permissions (First Time Only)
+
+**⚠️ Important**: Before deploying your agent, ensure memory permissions are configured:
+
+```bash
+# Configure memory permissions for AgentCore
+./scripts/setup-memory-permissions.sh
+```
+
+If you skip this step, your agent will encounter permission errors when trying to use memory features.
+
+### 2. Initial Deployment
 
 For first-time deployment:
 
@@ -84,7 +124,7 @@ agentcore launch
 # - Configure observability (CloudWatch + X-Ray)
 ```
 
-### 2. Update Existing Deployment
+### 3. Update Existing Deployment
 
 For updating an existing agent with new code:
 
@@ -96,7 +136,7 @@ agentcore launch --auto-update-on-conflict
 agentcore launch --auto-update-on-conflict
 ```
 
-### 3. Deployment Options
+### 4. Deployment Options
 
 ```bash
 # Default: CodeBuild + Cloud Runtime (RECOMMENDED)
@@ -373,7 +413,31 @@ Create a test PR in your repository to verify:
    echo $AWS_REGION
    ```
 
-2. **Build Failures**
+2. **Memory Permission Errors**
+   
+   **Error**: `AccessDeniedException: User is not authorized to perform: bedrock-agentcore:ListMemories`
+   
+   **Solution**:
+   ```bash
+   # Run the memory permissions setup script
+   ./scripts/setup-memory-permissions.sh
+   
+   # Verify the policy was attached
+   aws iam list-attached-role-policies --role-name AmazonBedrockAgentCoreSDKRuntime-[region]-[id]
+   ```
+   
+   **Manual Fix** (if script fails):
+   ```bash
+   # Find your AgentCore role
+   aws iam list-roles --query 'Roles[?contains(RoleName, `BedrockAgentCore`)].RoleName'
+   
+   # Attach the policy manually
+   aws iam attach-role-policy \
+     --role-name [YOUR_AGENTCORE_ROLE] \
+     --policy-arn arn:aws:iam::[ACCOUNT_ID]:policy/EcoCoderAgentCoreMemoryPermissions
+   ```
+
+3. **Build Failures**
    ```bash
    # Check CodeBuild logs
    agentcore status

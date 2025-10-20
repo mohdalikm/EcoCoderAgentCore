@@ -48,17 +48,17 @@ app = BedrockAgentCoreApp()
 AWS_REGION = os.getenv('AWS_REGION', 'ap-southeast-1')
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 GITHUB_TOKEN_SECRET_ARN = os.getenv('GITHUB_TOKEN_SECRET_ARN', 'eco-coder/github-token')
-ENABLE_AGENTCORE_MEMORY = os.getenv('ENABLE_AGENTCORE_MEMORY', 'true').lower() == 'true'
+ENABLE_AGENTCORE_MEMORY = os.getenv('ENABLE_AGENTCORE_MEMORY', 'false').lower() == 'true'
 
 
 def load_system_prompt():    
     # Use embedded system prompt
-    logger.warning("Using embedded system prompt")
+    logger.info("Using embedded system prompt")
     return SYSTEM_PROMPT
 
 
 def get_session_manager(actor_id: str, session_id: str):
-    """Initialize session manager"""
+    """Initialize session manager with comprehensive error handling"""
     
     # Check if AgentCore Memory is enabled
     if not ENABLE_AGENTCORE_MEMORY:
@@ -69,9 +69,9 @@ def get_session_manager(actor_id: str, session_id: str):
         # Initialize MemoryClient
         client = MemoryClient(region_name=AWS_REGION)
         
-        # Create or get memory
+        # Create or get memory with detailed error handling
         try:
-            # Try to get existing memory first
+            logger.info("Attempting to list existing memories...")
             memories_response = client.list_memories()
             memory = None
             memories = memories_response.get('memories', []) if isinstance(memories_response, dict) else []
@@ -79,20 +79,47 @@ def get_session_manager(actor_id: str, session_id: str):
             for mem in memories:
                 if mem.get('name') == 'eco-coder-memory':
                     memory = mem
+                    logger.info(f"Found existing memory: {memory.get('id')}")
                     break
             
             if not memory:
+                logger.info("No existing eco-coder-memory found, creating new memory...")
                 # Create new memory if not found
                 memory = client.create_memory(
                     name="eco-coder-memory",
                     description="Memory for Eco-Coder agent to track analysis history and context"
                 )
-        except Exception as e:
-            logger.warning(f"Could not create/get memory, creating basic memory: {e}")
-            memory = client.create_memory(
-                name=f"eco-coder-memory-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-                description="Basic memory for Eco-Coder agent"
-            )
+                logger.info(f"Created new memory: {memory.get('id')}")
+                
+        except Exception as memory_error:
+            # Handle specific permission errors
+            error_msg = str(memory_error)
+            
+            if "AccessDeniedException" in error_msg:
+                if "ListMemories" in error_msg:
+                    logger.error(f"❌ IAM Permission Error: Missing 'bedrock-agentcore:ListMemories' permission")
+                    logger.error("💡 Solution: Run './scripts/setup-memory-permissions.sh' to fix IAM permissions")
+                elif "CreateMemory" in error_msg:
+                    logger.error(f"❌ IAM Permission Error: Missing 'bedrock-agentcore:CreateMemory' permission")
+                    logger.error("💡 Solution: Run './scripts/setup-memory-permissions.sh' to fix IAM permissions")
+                else:
+                    logger.error(f"❌ IAM Permission Error: {error_msg}")
+                    logger.error("💡 Solution: Run './scripts/setup-memory-permissions.sh' to fix IAM permissions")
+                
+                # Return None to disable memory functionality gracefully
+                return None
+            else:
+                logger.warning(f"Memory operation failed, creating fallback memory: {memory_error}")
+                # Try to create a memory with a unique name as fallback
+                try:
+                    memory = client.create_memory(
+                        name=f"eco-coder-memory-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                        description="Fallback memory for Eco-Coder agent"
+                    )
+                    logger.info(f"Created fallback memory: {memory.get('id')}")
+                except Exception as fallback_error:
+                    logger.error(f"Fallback memory creation failed: {fallback_error}")
+                    return None
         
         # Create memory configuration
         memory_config = AgentCoreMemoryConfig(
@@ -101,13 +128,21 @@ def get_session_manager(actor_id: str, session_id: str):
             actor_id=actor_id
         )
         
-        logger.info(f"Created AgentCore Memory session for actor={actor_id}, session={session_id}")
+        logger.info(f"✅ Created AgentCore Memory session for actor={actor_id}, session={session_id}, memory={memory.get('id')}")
         return AgentCoreMemorySessionManager(
             agentcore_memory_config=memory_config,
             region_name=AWS_REGION
         )
+        
     except Exception as e:
-        logger.warning(f"Could not initialize AgentCore Memory, using default: {e}")
+        error_msg = str(e)
+        
+        if "AccessDeniedException" in error_msg:
+            logger.error(f"❌ IAM Permission Error: {error_msg}")
+            logger.error("💡 Solution: Run './scripts/setup-memory-permissions.sh' to fix IAM permissions")
+        else:
+            logger.warning(f"Could not initialize AgentCore Memory, using default session manager: {e}")
+        
         return None
 
 

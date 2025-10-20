@@ -1,0 +1,59 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "BedrockAgentCoreMemoryManagement",
+            "Effect": "Allow",
+            "Action": [
+                "bedrock-agentcore:ListMemories",
+                "bedrock-agentcore:CreateMemory",
+                "bedrock-agentcore:GetMemory",
+                "bedrock-agentcore:UpdateMemory",
+                "bedrock-agentcore:DeleteMemory"
+            ],
+            "Resource": [
+                "*"
+            ]
+        },
+        {
+            "Sid": "BedrockAgentCoreMemoryRecords",
+            "Effect": "Allow",
+            "Action": [
+                "bedrock-agentcore:ListMemoryRecords",
+                "bedrock-agentcore:BatchCreateMemoryRecords",
+                "bedrock-agentcore:BatchUpdateMemoryRecords",
+                "bedrock-agentcore:BatchDeleteMemoryRecords",
+                "bedrock-agentcore:GetMemoryRecord",
+                "bedrock-agentcore:DeleteMemoryRecord",
+                "bedrock-agentcore:RetrieveMemoryRecords"
+            ],
+            "Resource": [
+                "arn:aws:bedrock-agentcore:*:*:memory/*"
+            ]
+        },
+        {
+            "Sid": "BedrockAgentCoreMemoryEvents",
+            "Effect": "Allow",
+            "Action": [
+                "bedrock-agentcore:CreateEvent",
+                "bedrock-agentcore:GetEvent",
+                "bedrock-agentcore:DeleteEvent",
+                "bedrock-agentcore:ListEvents"
+            ],
+            "Resource": [
+                "arn:aws:bedrock-agentcore:*:*:memory/*"
+            ]
+        },
+        {
+            "Sid": "BedrockAgentCoreMemorySessions",
+            "Effect": "Allow",
+            "Action": [
+                "bedrock-agentcore:ListSessions",
+                "bedrock-agentcore:ListActors"
+            ],
+            "Resource": [
+                "arn:aws:bedrock-agentcore:*:*:memory/*"
+            ]
+        }
+    ]
+}

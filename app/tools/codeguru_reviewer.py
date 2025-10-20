@@ -456,7 +456,7 @@ def analyze_code_quality(
 # For development/testing - mock implementation when AWS services not available
 def mock_analyze_code_quality(repository_arn: str, branch_name: str, commit_sha: str) -> dict:
     """Mock implementation for development/testing"""
-    time.sleep(2)  # Simulate analysis time
+    time.sleep(1)  # Simulate analysis time
     
     return {
         "status": "completed",

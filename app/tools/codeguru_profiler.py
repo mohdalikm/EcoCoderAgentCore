@@ -458,7 +458,7 @@ def mock_profile_code_performance(
     end_time: str
 ) -> dict:
     """Mock implementation for development/testing"""
-    time.sleep(1.5)  # Simulate analysis time
+    time.sleep(1)  # Simulate analysis time
     
     return {
         "status": "completed",
