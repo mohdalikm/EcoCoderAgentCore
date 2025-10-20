@@ -244,6 +244,7 @@ def create_agent(session_id: str, repository: str) -> Agent:
 
     @tool
     def profile_pull_request_performance_tool(
+        pr_payload: dict = None,
         github_token: str = None
     ) -> dict:
         """
@@ -259,6 +260,7 @@ def create_agent(session_id: str, repository: str) -> Agent:
         real-world profiling data by actually executing the code changes.
         
         Args:
+            pr_payload: GitHub PR webhook payload (optional, will use session context if not provided)
             github_token: GitHub personal access token (optional, will use default if not provided)
             
         Returns:
@@ -281,32 +283,72 @@ def create_agent(session_id: str, repository: str) -> Agent:
             except Exception as e:
                 logger.warning(f"Could not retrieve GitHub token: {e}")
         
-        # We need to access the original payload from the calling context
-        # For now, return an informative message about the setup requirements
-        result = {
-            "status": "setup_required",
-            "message": "Performance Monitoring Setup",
-            "description": "CodeGuru Profiler integration requires proper AWS service setup (profiling groups, repository associations). Run the setup script: './scripts/setup-codeguru-profiler.sh'",
-            "estimated_metrics": {
-                "cpu_time_ms": 25,
-                "memory_usage_mb": 45,
-                "performance_score": "A",
-                "bottlenecks": [],
-                "recommendations": [
-                    "Set up CodeGuru Profiler profiling groups",
-                    "Configure repository associations",
-                    "Enable CodeBuild integration for real-time profiling"
-                ]
-            },
-            "next_steps": [
-                "Run './scripts/setup-codeguru-profiler.sh' to configure AWS services",
-                "Ensure proper IAM permissions for CodeGuru services",
-                "Consider alternative profiling tools for enhanced performance analysis"
-            ]
-        }
+        # Get PR payload from session context if not provided
+        if not pr_payload:
+            # In a real Bedrock Agent Core environment, the payload would be available in the session
+            # For testing, try to get it from environment or return setup guidance
+            try:
+                import os
+                import json
+                payload_str = os.getenv('ECOCODER_PR_PAYLOAD')
+                if payload_str:
+                    pr_payload = json.loads(payload_str)
+                    logger.info("📋 Retrieved PR payload from environment")
+                else:
+                    logger.warning("No PR payload available in environment")
+            except Exception as e:
+                logger.warning(f"Could not retrieve PR payload from environment: {e}")
         
-        logger.info(f"✅ TOOL RESULT: profile_pull_request_performance completed with status: {result.get('status', 'unknown')}")
-        return result
+        # If we still don't have a payload, return setup guidance
+        if not pr_payload:
+            result = {
+                "status": "setup_required",
+                "message": "Performance Monitoring Setup",
+                "description": "CodeGuru Profiler integration requires proper AWS service setup (profiling groups, repository associations). Run the setup script: './scripts/setup-codeguru-profiler.sh'",
+                "estimated_metrics": {
+                    "cpu_time_ms": 25,
+                    "memory_usage_mb": 45,
+                    "performance_score": "A",
+                    "bottlenecks": [],
+                    "recommendations": [
+                        "Set up CodeGuru Profiler profiling groups",
+                        "Configure repository associations",
+                        "Enable CodeBuild integration for real-time profiling"
+                    ]
+                },
+                "next_steps": [
+                    "Run './scripts/setup-codeguru-profiler.sh' to configure AWS services",
+                    "Ensure proper IAM permissions for CodeGuru services",
+                    "Provide PR payload for real profiling analysis"
+                ]
+            }
+            logger.info(f"✅ TOOL RESULT: profile_pull_request_performance completed with status: {result.get('status', 'unknown')}")
+            return result
+        
+        # Call the actual profiling function with the payload
+        try:
+            from app.tools.codeguru_profiler import profile_pull_request_performance
+            result = profile_pull_request_performance(pr_payload, github_token)
+            logger.info(f"✅ TOOL RESULT: profile_pull_request_performance completed with status: {result.get('status', 'unknown')}")
+            return result
+        except Exception as e:
+            logger.error(f"🚨 PR profiling failed: {str(e)}")
+            return {
+                "status": "error",
+                "error_type": "profiling_execution_error",
+                "message": f"PR profiling execution failed: {str(e)}",
+                "estimated_metrics": {
+                    "cpu_time_ms": 25,
+                    "memory_usage_mb": 45,
+                    "performance_score": "C",
+                    "bottlenecks": [],
+                    "recommendations": [
+                        "Check AWS permissions and service availability",
+                        "Verify GitHub token and repository access",
+                        "Review CloudWatch logs for detailed error information"
+                    ]
+                }
+            }
     
     @tool
     def calculate_carbon_footprint_tool(

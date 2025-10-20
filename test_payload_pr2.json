@@ -1,0 +1,37 @@
+{
+  "action": "opened",
+  "number": 2,
+  "pull_request": {
+    "url": "https://api.github.com/repos/mohdalikm/test-repo/pulls/2",
+    "id": 2930187532,
+    "number": 2,
+    "state": "open",
+    "title": "python code structure added",
+    "body": null,
+    "diff_url": "https://github.com/mohdalikm/test-repo/pull/2.diff",
+    "created_at": "2025-10-20T15:12:09Z",
+    "updated_at": "2025-10-20T15:12:09Z",
+    "head": {
+      "label": "mohdalikm:change-1",
+      "ref": "change-1",
+      "sha": "16ebbc5a7a791a14d6df0996c0e826652715813f"
+    },
+    "base": {
+      "label": "mohdalikm:main",
+      "ref": "main",
+      "sha": "4ba16167c4d46bfe7b3b3f1c7acfb333eef28cd1"
+    },
+    "commits": 1,
+    "additions": 4453,
+    "deletions": 53,
+    "changed_files": 19
+  },
+  "repository": {
+    "name": "test-repo",
+    "full_name": "mohdalikm/test-repo",
+    "clone_url": "https://github.com/mohdalikm/test-repo.git",
+    "owner": {
+      "login": "mohdalikm"
+    }
+  }
+}

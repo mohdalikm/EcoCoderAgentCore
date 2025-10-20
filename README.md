@@ -295,6 +295,7 @@ curl http://localhost:3000/health
   Run 'agentcore configure' to configure your agent
   run agentcore launch to deploy the agent to aws environment
   run agentcore invoke to call the agent running in aws envrionment directly from your local machine
+     .venv-py311/bin/activate && agentcore invoke "$(cat test_payload.json)
 
   Update the variable AgentArn in the SAM template.yaml file under ecocode_entry_lambda folder with the agent runtime arn
 
