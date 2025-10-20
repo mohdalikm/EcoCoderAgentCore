@@ -106,33 +106,10 @@ Resources:
       StageName: !Ref Environment
       Description: "API Gateway for EcoCoder GitHub webhook integration"
       
-      # Enable logging and monitoring
-      AccessLogSetting:
-        DestinationArn: !GetAtt EcoCoderApiLogGroup.Arn
-        Format: >
-          {
-            "requestId": "$context.requestId",
-            "ip": "$context.identity.sourceIp",
-            "caller": "$context.identity.caller",
-            "user": "$context.identity.user",
-            "requestTime": "$context.requestTime",
-            "httpMethod": "$context.httpMethod",
-            "resourcePath": "$context.resourcePath",
-            "status": "$context.status",
-            "protocol": "$context.protocol",
-            "responseLength": "$context.responseLength",
-            "responseTime": "$context.responseTime",
-            "integrationLatency": "$context.integration.latency",
-            "integrationStatus": "$context.integration.status",
-            "integrationError": "$context.integration.error"
-          }
-      
       # Method settings for throttling and caching
       MethodSettings:
         - ResourcePath: "/*"
           HttpMethod: "*"
-          LoggingLevel: INFO
-          DataTraceEnabled: true
           MetricsEnabled: true
           ThrottlingRateLimit: 100
           ThrottlingBurstLimit: 200
@@ -235,7 +212,10 @@ Resources:
                 Action:
                   - bedrock-agentcore:InvokeAgentRuntime
                   - bedrock-agentcore:GetAgentRuntime
-                Resource: !Ref AgentArn
+                  - bedrock-agent:InvokeAgent
+                Resource: 
+                  - !Ref AgentArn
+                  - !Sub "${AgentArn}/*"
               
               - Effect: Allow
                 Action:
@@ -243,6 +223,11 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-ecocoder-core-entry"
 
   # CloudWatch Log Groups
   EcoCoderLambdaLogGroup:
@@ -258,13 +243,7 @@ Resources:
       RetentionInDays: 30
 
   # Lambda permissions for API Gateway
-  EcoCoderLambdaApiPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref EcoCoderCoreEntryFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "${EcoCoderApi}/*/*"
+  # Note: Individual method permissions are handled by the Events section above
 
 
 

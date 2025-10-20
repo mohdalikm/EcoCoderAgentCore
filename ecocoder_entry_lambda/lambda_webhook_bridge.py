@@ -50,18 +50,81 @@ def verify_github_signature(payload_body: str, signature_header: str, secret: st
     return hmac.compare_digest(expected_signature, signature)
 
 
+def handle_async_agent_invocation(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle asynchronous agent invocation (fire-and-forget from webhook perspective)
+    """
+    try:
+        session_id = event.get('session_id')
+        github_payload = event.get('github_payload')
+        agent_arn = event.get('agent_arn')
+        repository = event.get('repository')
+        pr_number = event.get('pr_number')
+        
+        logger.info(f"Processing async agent invocation for PR #{pr_number} in {repository}")
+        
+        # Prepare payload for AgentCore Runtime
+        agentcore_payload = json.dumps(github_payload).encode('utf-8')
+        
+        # Invoke the AgentCore Runtime (this can take time, but it's async)
+        response = bedrock_agentcore.invoke_agent_runtime(
+            agentRuntimeArn=agent_arn,
+            runtimeSessionId=session_id,
+            payload=agentcore_payload,
+            qualifier='DEFAULT'
+        )
+        
+        # Process the streaming response
+        response_content = []
+        for chunk in response.get('response', []):
+            if isinstance(chunk, bytes):
+                response_content.append(chunk.decode('utf-8'))
+            else:
+                response_content.append(str(chunk))
+        
+        agent_response = ''.join(response_content)
+        logger.info(f"AgentCore Runtime completed for PR #{pr_number}: {agent_response[:200]}...")
+        
+        # Return success (this won't be seen by GitHub webhook, but useful for CloudWatch)
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'message': f'Agent analysis completed for PR #{pr_number}',
+                'session_id': session_id,
+                'repository': repository,
+                'status': 'completed'
+            })
+        }
+        
+    except Exception as e:
+        logger.error(f"Async agent invocation failed for PR #{pr_number}: {str(e)}", exc_info=True)
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'error': f'Agent analysis failed for PR #{pr_number}',
+                'message': str(e)
+            })
+        }
+
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Lambda function handler for GitHub webhook to AgentCore integration
+    Supports both webhook processing and async agent invocation
     """
     try:
         logger.info(f"Received event: {json.dumps(event, default=str)}")
         
-        # Extract request details
-        http_method = event.get('requestContext', {}).get('http', {}).get('method', 'GET')
+        # Check if this is an async agent invocation
+        if event.get('action') == 'invoke_agent':
+            return handle_async_agent_invocation(event)
+        
+        # Extract request details for webhook processing
+        http_method = event.get('requestContext', {}).get('http', {}).get('method', 
+                                event.get('httpMethod', 'GET'))
         headers = event.get('headers', {})
         body = event.get('body', '')
-        path = event.get('path', event.get('pathParameters', {}).get('proxy', ''))
+        path = event.get('path', event.get('pathParameters', {}).get('proxy', '') if event.get('pathParameters') else '')
         
         # Handle health check requests
         if path == '/health' or path == 'health':
@@ -155,31 +218,31 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     # Generate unique session ID for this webhook
                     session_id = f"webhook-{repo_name}-{pr_number}-{uuid.uuid4().hex[:8]}"
                     
-                    # Prepare payload for AgentCore Runtime
-                    agentcore_payload = json.dumps(github_payload).encode('utf-8')
+                    logger.info(f"Initiating async AgentCore Runtime analysis for PR #{pr_number} in {repo_name}")
                     
-                    logger.info(f"Invoking AgentCore Runtime for PR #{pr_number} in {repo_name}")
+                    # Invoke the AgentCore Runtime asynchronously using Lambda invoke
+                    # This creates a fire-and-forget pattern
+                    lambda_client = boto3.client('lambda', region_name=REGION)
                     
-                    # Invoke the AgentCore Runtime
-                    response = bedrock_agentcore.invoke_agent_runtime(
-                        agentRuntimeArn=AGENT_ARN,
-                        runtimeSessionId=session_id,
-                        payload=agentcore_payload,
-                        qualifier='DEFAULT'
+                    async_payload = {
+                        'action': 'invoke_agent',
+                        'session_id': session_id,
+                        'github_payload': github_payload,
+                        'agent_arn': AGENT_ARN,
+                        'repository': repo_name,
+                        'pr_number': pr_number
+                    }
+                    
+                    # Invoke this same Lambda function asynchronously for agent processing
+                    lambda_client.invoke(
+                        FunctionName=os.environ.get('AWS_LAMBDA_FUNCTION_NAME'),
+                        InvocationType='Event',  # Asynchronous invocation
+                        Payload=json.dumps(async_payload)
                     )
                     
-                    # Process the streaming response
-                    response_content = []
-                    for chunk in response.get('response', []):
-                        if isinstance(chunk, bytes):
-                            response_content.append(chunk.decode('utf-8'))
-                        else:
-                            response_content.append(str(chunk))
+                    logger.info(f"Async agent invocation queued for PR #{pr_number}")
                     
-                    agent_response = ''.join(response_content)
-                    logger.info(f"AgentCore Runtime response: {agent_response[:200]}...")
-                    
-                    # Return success response to GitHub
+                    # Return immediate response to GitHub
                     return {
                         'statusCode': 200,
                         'headers': {
@@ -187,15 +250,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             'Access-Control-Allow-Origin': '*'
                         },
                         'body': json.dumps({
-                            'message': f'EcoCoder analysis initiated for PR #{pr_number}',
+                            'message': f'EcoCoder analysis queued for PR #{pr_number}',
                             'session_id': session_id,
                             'repository': repo_name,
-                            'status': 'success'
+                            'status': 'queued'
                         })
                     }
                     
-                except Exception as agentcore_error:
-                    logger.error(f"AgentCore Runtime invocation failed: {str(agentcore_error)}")
+                except Exception as queue_error:
+                    logger.error(f"Failed to queue AgentCore Runtime analysis: {str(queue_error)}")
                     
                     # Return error but don't fail the webhook
                     return {
@@ -205,8 +268,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             'Access-Control-Allow-Origin': '*'
                         },
                         'body': json.dumps({
-                            'message': f'EcoCoder analysis failed for PR #{pr_number}',
-                            'error': str(agentcore_error),
+                            'message': f'Failed to queue EcoCoder analysis for PR #{pr_number}',
+                            'error': str(queue_error),
                             'status': 'error'
                         })
                     }
