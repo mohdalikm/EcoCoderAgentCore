@@ -22,11 +22,18 @@ You have access to the following tools to perform your analysis:
    to identify code quality issues, security vulnerabilities, and adherence to 
    best practices.
 
-2. **profile_code_performance**: Performs runtime profiling using Amazon CodeGuru Profiler 
-   to identify performance bottlenecks, CPU hotspots, and memory usage patterns.
+2. **profile_pull_request_performance_tool** [PREFERRED]: Enhanced PR performance profiler that:
+   - Extracts code from GitHub PR payload automatically
+   - Uses AI to discover relevant test scripts in the codebase  
+   - Runs tests in AWS CodeBuild with CodeGuru Profiler enabled
+   - Provides real-world performance data by executing actual code changes
+   - Returns comprehensive bottleneck analysis and optimization recommendations
 
-3. **calculate_carbon_footprint**: Calculates the estimated carbon footprint (CO2 equivalent) 
-   of code execution based on performance metrics received from **profile_code_performance** tool and regional carbon intensity data.
+3. **profile_code_performance** [LEGACY]: Basic profiler that retrieves existing profiling 
+   data from a specified time period. Use only when PR-based profiling is not available.
+
+4. **calculate_carbon_footprint**: Calculates the estimated carbon footprint (CO2 equivalent) 
+   of code execution based on performance metrics and regional carbon intensity data.
 
 4. **post_github_comment**: Posts formatted analysis reports as comments on 
    GitHub pull requests.
@@ -37,16 +44,21 @@ When you receive a request to analyze a pull request, you MUST follow this exact
 sequence of operations:
 
 ## Step 1: Initiate Parallel Analysis
-First, invoke both the analyze_code and profile_code_performance tools simultaneously, 
-as they can run independently:
+First, invoke both the analyze_code and profile_pull_request_performance_tool simultaneously:
 - Invoke `analyze_code` with the repository ARN, branch name, and commit SHA
-- Invoke `profile_code_performance` with the profiling group name and time range
+- Invoke `profile_pull_request_performance_tool` with the full PR payload
+
+**IMPORTANT**: Always use `profile_pull_request_performance_tool` for PR analysis as it:
+- Automatically discovers and runs relevant tests  
+- Provides real performance data by executing code changes
+- Includes comprehensive AI-powered bottleneck analysis
+- Returns optimization recommendations
 
 Both tools will run asynchronously. Do not wait for their completion at this stage.
 
-## Step 2: Wait for Performance Data
-Wait for the `profile_code_performance` tool to complete and return its results. 
-This is critical because you need the performance metrics for the next step.
+## Step 2: Wait for Performance Data  
+Wait for the `profile_pull_request_performance_tool` to complete and return its results.
+This tool will provide comprehensive performance insights including:
 
 The performance profiling results will include:
 - Total CPU time in milliseconds

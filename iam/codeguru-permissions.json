@@ -1,0 +1,109 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "CodeGuruProfilerPermissions",
+            "Effect": "Allow",
+            "Action": [
+                "codeguru-profiler:GetProfile",
+                "codeguru-profiler:GetRecommendations",
+                "codeguru-profiler:DescribeProfilingGroup",
+                "codeguru-profiler:ListProfilingGroups",
+                "codeguru-profiler:ListProfileTimes",
+                "codeguru-profiler:PostAgentProfile",
+                "codeguru-profiler:ConfigureAgent"
+            ],
+            "Resource": [
+                "arn:aws:codeguru-profiler:*:*:profilingGroup/*"
+            ]
+        },
+        {
+            "Sid": "CodeGuruReviewerPermissions",
+            "Effect": "Allow",
+            "Action": [
+                "codeguru-reviewer:AssociateRepository",
+                "codeguru-reviewer:DescribeRepositoryAssociation",
+                "codeguru-reviewer:ListRepositoryAssociations",
+                "codeguru-reviewer:CreateCodeReview",
+                "codeguru-reviewer:DescribeCodeReview",
+                "codeguru-reviewer:ListRecommendations",
+                "codeguru-reviewer:DescribeRecommendationFeedback"
+            ],
+            "Resource": [
+                "*"
+            ]
+        },
+        {
+            "Sid": "CodeBuildPermissions",
+            "Effect": "Allow",
+            "Action": [
+                "codebuild:BatchGetBuilds",
+                "codebuild:BatchGetProjects",
+                "codebuild:StartBuild",
+                "codebuild:StopBuild",
+                "codebuild:ListProjects"
+            ],
+            "Resource": [
+                "arn:aws:codebuild:*:*:project/bedrock-agentcore-*",
+                "arn:aws:codebuild:*:*:project/ecocoder-profiler-*"
+            ]
+        },
+        {
+            "Sid": "CodeGuruProfilerManagement",
+            "Effect": "Allow",
+            "Action": [
+                "codeguru-profiler:CreateProfilingGroup",
+                "codeguru-profiler:DeleteProfilingGroup",
+                "codeguru-profiler:UpdateProfilingGroup"
+            ],
+            "Resource": [
+                "arn:aws:codeguru-profiler:*:*:profilingGroup/ecocoder-*"
+            ]
+        },
+        {
+            "Sid": "SupportingServicesPermissions",
+            "Effect": "Allow",
+            "Action": [
+                "ssm:GetParameter",
+                "ssm:GetParameters",
+                "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+                "arn:aws:ssm:*:*:parameter/ecocoder/*",
+                "arn:aws:secretsmanager:*:*:secret:eco-coder/*"
+            ]
+        },
+        {
+            "Sid": "CloudWatchLogsPermissions",
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:DescribeLogGroups",
+                "logs:DescribeLogStreams",
+                "logs:GetLogEvents"
+            ],
+            "Resource": [
+                "arn:aws:logs:*:*:log-group:/aws/codebuild/*",
+                "arn:aws:logs:*:*:log-group:/aws/codebuild/*:log-stream:*"
+            ]
+        },
+        {
+            "Sid": "IAMPassRolePermissions",
+            "Effect": "Allow",
+            "Action": [
+                "iam:PassRole"
+            ],
+            "Resource": [
+                "arn:aws:iam::*:role/*CodeBuild*",
+                "arn:aws:iam::*:role/eco-coder-*"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "iam:PassedToService": "codebuild.amazonaws.com"
+                }
+            }
+        }
+    ]
+}

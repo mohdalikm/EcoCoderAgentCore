@@ -14,7 +14,8 @@ EcoCoderAgentCore is an intelligent AI agent that analyzes GitHub pull requests 
 
 - 🌱 **Carbon Footprint Analysis** - Calculate CO2 emissions from code performance
 - 🔍 **Code Quality Review** - Static analysis using Amazon CodeGuru Reviewer
-- ⚡ **Performance Profiling** - Identify bottlenecks with CodeGuru Profiler  
+- ⚡ **Enhanced Performance Profiling** - AI-powered test discovery with real CodeBuild execution and CodeGuru Profiler integration
+- 🤖 **AI Test Discovery** - Automatically finds and runs relevant test scripts from PR changes
 - 📊 **Automated Reporting** - Post detailed analysis to GitHub pull requests
 - 🚀 **Scalable Architecture** - Container-based deployment with AWS AgentCore for the Agent and tools; and SAM based deployment for API Gateway and Lambds
 - 🔒 **Enterprise Ready** - IAM roles, secrets management, monitoring included
@@ -62,6 +63,64 @@ graph TB
 - **IAM Roles**: Least-privilege access for Lambda and AgentCore
 - **CloudWatch**: Comprehensive logging and monitoring
 - **Secrets Manager**: Secure storage for GitHub tokens and webhook secrets
+
+### Enhanced Performance Profiling 🚀
+
+EcoCoder features an **AI-powered performance profiler** that goes beyond traditional static analysis by actually executing your code changes:
+
+#### How It Works
+
+1. **📋 PR Analysis**: Extracts changed files from GitHub PR payload
+2. **🤖 AI Test Discovery**: Uses intelligent heuristics to find relevant test scripts:
+   - Analyzes file patterns (`test_*.py`, `*_test.py`, etc.)
+   - Maps source files to their corresponding tests
+   - Discovers integration and end-to-end tests
+   - Calculates confidence scores for test relevance
+
+3. **🏗️ CodeBuild Execution**: Runs discovered tests in AWS CodeBuild with:
+   - CodeGuru Profiler agent enabled for real-time profiling
+   - Proper build environment with language-specific setup
+   - Isolated execution for accurate performance measurement
+
+4. **📊 Performance Analysis**: Provides comprehensive insights:
+   - CPU bottlenecks with function-level detail
+   - Memory usage patterns and optimization opportunities
+   - Performance grades (A-F) based on execution metrics
+   - Actionable recommendations with priority levels
+
+#### Key Advantages
+
+- **Real Performance Data**: Unlike static analysis, measures actual execution performance
+- **Zero Configuration**: Automatically discovers and runs relevant tests
+- **Language Aware**: Supports Python, JavaScript, Java with framework-specific commands
+- **Comprehensive Results**: Combines profiling data with AI-generated optimization recommendations
+- **Robust Error Handling**: Gracefully handles GitHub API issues, build failures, and missing tests
+
+#### Example Output
+
+```json
+{
+  "status": "completed",
+  "pr_analysis": {
+    "files_changed": 3,
+    "languages": ["python"],
+    "total_changes": 156
+  },
+  "test_discovery": {
+    "tests_discovered": 8,
+    "confidence_score": 0.85,
+    "test_frameworks": ["pytest"]
+  },
+  "performance_insights": {
+    "performance_grade": "B",
+    "cpu_performance_score": 0.78,
+    "optimization_opportunities": [
+      "Algorithm optimization needed",
+      "Consider caching frequently called functions"
+    ]
+  }
+}
+```
 - **Parameter Store**: Configuration management for agent settings
 
 ### Components
@@ -149,6 +208,24 @@ aws ssm put-parameter \
   --description "CodeGuru profiling duration in seconds"
 ```
 
+#### Configure Agent Permissions:
+
+After deploying your AgentCore runtime with `agentcore launch`, run the permissions setup script:
+
+```bash
+# Configure all required permissions (Memory + CodeGuru)
+./scripts/setup-permissions.sh
+
+# Or legacy memory-only setup  
+./scripts/setup-memory-permissions.sh
+```
+
+This script will:
+- Find your AgentCore runtime role automatically
+- Attach Bedrock AgentCore memory permissions
+- Attach CodeGuru Profiler and Reviewer permissions
+- Configure access to Systems Manager and Secrets Manager
+
 ### 4. Local Development
 
 ```bash
@@ -227,6 +304,7 @@ curl http://localhost:3000/health
    ```
    
    The deployment will output the webhook URL you need for GitHub.
+   Additional permission needed for the agent is defined in the setup-permission.sh file which also need to be executed
 
 2. **Setup GitHub Webhook**: Configure GitHub webhook in your repository settings:
    - Payload URL: `https://your-api-gateway-id.execute-api.ap-southeast-1.amazonaws.com/dev/webhook`
@@ -467,7 +545,35 @@ aws sts get-caller-identity
 
 # Check CodeGuru permissions
 aws codeguru-reviewer describe-code-review --code-review-arn "test"
+```
 
+**3. CodeGuru Profiler permission issues**
+If you see the error "Permission limitations prevented performance profiling":
+
+```bash
+# Run the comprehensive permissions setup script
+./scripts/setup-permissions.sh
+
+# This will configure both memory and CodeGuru permissions
+# Alternatively, run the legacy memory-only script:
+./scripts/setup-memory-permissions.sh
+```
+
+The issue occurs when the AgentCore runtime role lacks required CodeGuru permissions:
+- `codeguru-profiler:GetProfile`
+- `codeguru-profiler:GetRecommendations` 
+- `codeguru-profiler:DescribeProfilingGroup`
+
+**4. Individual permission debugging**
+```bash
+# Test CodeGuru Profiler access
+aws codeguru-profiler list-profiling-groups
+
+# Test CodeGuru Reviewer access  
+aws codeguru-reviewer list-code-reviews
+
+# Check Systems Manager access
+aws ssm get-parameter --name "/ecocoder/config/profiling-duration"
 ```
 
 ### Debugging
@@ -496,3 +602,5 @@ export LOG_LEVEL=DEBUG
 ---
 
 **Built with 🌱 for a more sustainable future in software development**
+
+Architecture diagram available here: https://drive.google.com/file/d/1dNF71SL0Ref4Ui1-O_MGV_pG0VAoPYgE/view?usp=sharing

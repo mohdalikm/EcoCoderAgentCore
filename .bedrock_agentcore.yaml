@@ -23,7 +23,7 @@ agents:
     bedrock_agentcore:
       agent_id: ecocoderagentcore-H0kpdY5A85
       agent_arn: arn:aws:bedrock-agentcore:ap-southeast-1:434114167546:runtime/ecocoderagentcore-H0kpdY5A85
-      agent_session_id: 4cc8311f-ca5b-4801-969d-ca8febdb2b80
+      agent_session_id: ddcb0b67-cb53-4776-b536-42a1df60f0c5
     codebuild:
       project_name: bedrock-agentcore-ecocoderagentcore-builder
       execution_role: arn:aws:iam::434114167546:role/AmazonBedrockAgentCoreSDKCodeBuild-ap-southeast-1-b953f47315

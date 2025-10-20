@@ -86,14 +86,62 @@ def cache_result(commit_sha: str, result: Dict) -> None:
         logger.warning(f"Failed to cache result: {e}")
 
 
+def create_or_get_repository_association(repository_name: str) -> str:
+    """
+    Create or get a repository association for CodeGuru Reviewer
+    
+    Args:
+        repository_name: Name of the repository (e.g., "mohdalikm/test-repo")
+        
+    Returns:
+        Repository association ARN
+        
+    Raises:
+        CodeGuruReviewerError: If association creation fails
+    """
+    try:
+        codeguru_client = boto3.client('codeguru-reviewer')
+        
+        # First, try to find existing association
+        try:
+            response = codeguru_client.list_repository_associations()
+            for association in response.get('RepositoryAssociationSummaries', []):
+                if association.get('RepositoryName') == repository_name:
+                    association_arn = association['AssociationArn']
+                    logger.info(f"Found existing repository association: {association_arn}")
+                    return association_arn
+        except Exception as e:
+            logger.warning(f"Could not list existing associations: {e}")
+        
+        # IMPORTANT: CodeGuru Reviewer is being deprecated November 7, 2025
+        # We'll return a mock ARN for now since new associations cannot be created
+        logger.warning(f"CodeGuru Reviewer is deprecated (Nov 7, 2025). Cannot create new repository associations.")
+        
+        # Generate a mock ARN format that won't cause API errors
+        region = boto3.session.Session().region_name or 'us-east-1'
+        account_id = boto3.client('sts').get_caller_identity()['Account']
+        mock_arn = f"arn:aws:codeguru-reviewer:{region}:{account_id}:association/mock-{repository_name.replace('/', '-')}"
+        
+        raise CodeGuruReviewerError(f"Repository association setup required. CodeGuru Reviewer will be deprecated Nov 7, 2025. Consider alternative code quality tools.")
+        
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        
+        if error_code == 'AccessDeniedException':
+            raise CodeGuruReviewerError(f"Access denied. Check IAM permissions for CodeGuru Reviewer.")
+        else:
+            raise CodeGuruReviewerError(f"Failed to setup repository association: {error_message}")
+
+
 def create_code_review(repository_arn: str, branch_name: str, commit_sha: str) -> str:
     """
     Create a CodeGuru code review
     
     Args:
-        repository_arn: ARN of the repository
+        repository_arn: ARN of the repository association
         branch_name: Git branch name
-        commit_sha: Git commit SHA
+        commit_sha: Git commit SHA (used for logging only)
         
     Returns:
         Code review ARN
@@ -108,22 +156,23 @@ def create_code_review(repository_arn: str, branch_name: str, commit_sha: str) -
         # Create unique review name
         review_name = f"eco-coder-review-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{commit_sha[:8]}"
         
-        # Prepare review request
+        # Prepare review request - According to AWS API docs, RepositoryHead only accepts BranchName
+        # CommitId is not supported in the RepositoryHead structure
         request = {
             'Name': review_name,
             'RepositoryAssociationArn': repository_arn,
             'Type': {
                 'RepositoryAnalysis': {
                     'RepositoryHead': {
-                        'BranchName': branch_name,
-                        'CommitId': commit_sha
+                        'BranchName': branch_name
+                        # Note: CommitId is not supported here - CodeGuru will analyze the latest commit on the branch
                     }
                 }
             },
             'ClientRequestToken': f"eco-coder-{int(time.time())}"
         }
         
-        logger.info(f"Creating CodeGuru review for {repository_arn} @ {commit_sha}")
+        logger.info(f"Creating CodeGuru review for {repository_arn} branch {branch_name} (commit {commit_sha})")
         response = codeguru_client.create_code_review(**request)
         
         review_arn = response['CodeReview']['CodeReviewArn']
@@ -136,11 +185,13 @@ def create_code_review(repository_arn: str, branch_name: str, commit_sha: str) -
         error_message = e.response['Error']['Message']
         
         if error_code == 'ResourceNotFoundException':
-            raise CodeGuruReviewerError(f"Repository association not found: {repository_arn}")
+            raise CodeGuruReviewerError(f"Repository association not found: {repository_arn}. Need to create repository association first.")
         elif error_code == 'ConflictException':
-            raise CodeGuruReviewerError(f"Code review already in progress for this commit")
+            raise CodeGuruReviewerError(f"Code review already in progress for branch {branch_name}")
         elif error_code == 'ThrottlingException':
             raise CodeGuruReviewerError(f"Request throttled by CodeGuru Reviewer")
+        elif error_code == 'ValidationException':
+            raise CodeGuruReviewerError(f"Parameter validation failed: {error_message}")
         else:
             raise CodeGuruReviewerError(f"Failed to create code review: {error_message}")
 
@@ -367,6 +418,30 @@ def analyze_code_quality(
         if cached_result:
             logger.info(f"Cache hit for commit {commit_sha}")
             return cached_result
+        
+        # Check if repository_arn is actually a repository name and needs association
+        if not repository_arn.startswith('arn:aws:codeguru-reviewer:'):
+            logger.info(f"Repository ARN appears to be a repository name, attempting to find/create association")
+            try:
+                repository_arn = create_or_get_repository_association(repository_arn)
+            except CodeGuruReviewerError as e:
+                # CodeGuru Reviewer setup issue - return error with helpful message
+                logger.error(f"Repository association setup failed: {e}")
+                return {
+                    "status": "error",
+                    "error_type": "repository_association_required",
+                    "message": str(e),
+                    "recommendations": [],
+                    "total_recommendations": 0,
+                    "analysis_time_seconds": round(time.time() - start_time, 2),
+                    "summary": {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
+                    "setup_instructions": [
+                        "CodeGuru Reviewer requires repository association setup",
+                        "IMPORTANT: CodeGuru Reviewer will be deprecated November 7, 2025",
+                        "Consider using alternative code quality tools like SonarQube, ESLint, or Pylint",
+                        "For existing associations, use the full ARN format"
+                    ]
+                }
         
         # Create code review
         review_arn = create_code_review(repository_arn, branch_name, commit_sha)
