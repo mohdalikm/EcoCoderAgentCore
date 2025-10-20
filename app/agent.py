@@ -242,27 +242,24 @@ def create_agent(session_id: str, repository: str) -> Agent:
     def post_github_comment_tool(
         repository_full_name: str,
         pull_request_number: int,
-        report_markdown: str,
-        update_existing: bool = True
+        report_markdown: str
     ) -> dict:
         """
         Post analysis report as GitHub PR comment.
         
         This tool posts the generated Markdown report as a comment on the specified
-        pull request. It can update an existing bot comment if found, or create a
-        new comment if this is the first analysis.
+        pull request.
         
         Args:
             repository_full_name: Repository in "owner/repo" format
             pull_request_number: PR number
             report_markdown: Formatted report in Markdown
-            update_existing: Whether to update existing bot comment (default: True)
             
         Returns:
             Dictionary containing comment status, ID, and URL for viewing on GitHub.
         """
         logger.info(f"Posting comment to PR #{pull_request_number} in {repository_full_name}")
-        return post_github_comment(repository_full_name, pull_request_number, report_markdown, update_existing)
+        return post_github_comment(repository_full_name, pull_request_number, report_markdown)
     
     # Create agent with tools
     tools = [analyze_code, profile_code_performance_tool, calculate_carbon_footprint_tool, post_github_comment_tool]
@@ -339,6 +336,7 @@ def invoke(payload: dict) -> dict:
     }
     """
     start_time = time.time()
+    logger.info("Eco-Coder agent invoked, start of the entrypoint")
     
     try:
         logger.info(f"Received payload: {json.dumps(payload, indent=2)}")

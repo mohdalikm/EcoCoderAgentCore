@@ -91,20 +91,21 @@ class TestAgentCreation:
         agent = create_agent(session_id, repository)
         
         assert agent is not None
-        assert hasattr(agent, 'tools')
-        assert len(agent.tools) > 0
+        assert hasattr(agent, 'tool_registry')
+        assert hasattr(agent, 'tool_names')
+        assert len(agent.tool_names) > 0
         
         # Check that required tools are registered
         expected_tools = [
             'analyze_code',
-            'profile_code_performance_tool', 
+            'profile_code_performance_tool',
             'calculate_carbon_footprint_tool',
             'post_github_comment_tool'
         ]
         
         for tool_name in expected_tools:
-            assert tool_name in agent.tools
-    
+            assert tool_name in agent.tool_names
+
     def test_load_system_prompt(self):
         """Test loading system prompt"""
         prompt = load_system_prompt()
@@ -191,8 +192,11 @@ class TestToolIntegration:
         
         agent = create_agent(session_id, repository)
         
+        # Get tools from the registry
+        tools = agent.tool_registry.registry
+        
         # Test analyze_code tool
-        analyze_code = agent.tools['analyze_code']
+        analyze_code = tools['analyze_code']
         result = analyze_code(
             repository_arn="arn:aws:codecommit:us-east-1:123456:test-repo",
             branch_name="main",
@@ -201,7 +205,7 @@ class TestToolIntegration:
         assert isinstance(result, dict)
         
         # Test profile_code_performance_tool
-        profile_tool = agent.tools['profile_code_performance_tool']
+        profile_tool = tools['profile_code_performance_tool']
         result = profile_tool(
             profiling_group_name="test-group",
             start_time="2023-01-01T00:00:00Z",
@@ -210,7 +214,7 @@ class TestToolIntegration:
         assert isinstance(result, dict)
         
         # Test calculate_carbon_footprint_tool
-        carbon_tool = agent.tools['calculate_carbon_footprint_tool']
+        carbon_tool = tools['calculate_carbon_footprint_tool']
         result = carbon_tool(
             cpu_time_seconds=10.5,
             ram_usage_mb=512.0,
@@ -220,7 +224,7 @@ class TestToolIntegration:
         assert isinstance(result, dict)
         
         # Test post_github_comment_tool
-        github_tool = agent.tools['post_github_comment_tool']
+        github_tool = tools['post_github_comment_tool']
         result = github_tool(
             repository_full_name="owner/repo",
             pull_request_number=42,

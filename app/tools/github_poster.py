@@ -113,7 +113,7 @@ def create_requests_session() -> requests.Session:
     retry_strategy = Retry(
         total=MAX_RETRIES,
         status_forcelist=[429, 500, 502, 503, 504],  # HTTP status codes to retry
-        method_whitelist=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"],
+        allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"],
         backoff_factor=RETRY_BACKOFF_SECONDS
     )
     
@@ -231,63 +231,6 @@ def create_comment(
         raise GitHubPosterError(f"Invalid JSON response: {str(e)}")
 
 
-def update_comment(
-    session: requests.Session,
-    token: str,
-    repo_full_name: str,
-    comment_id: int,
-    report: str
-) -> Dict[str, Any]:
-    """
-    Update an existing comment
-    
-    Args:
-        session: Requests session
-        token: GitHub API token
-        repo_full_name: Repository full name
-        comment_id: ID of comment to update
-        report: Complete report with signature
-        
-    Returns:
-        Updated comment data from GitHub API
-        
-    Raises:
-        GitHubPosterError: If comment update fails
-    """
-    url = f"{GITHUB_API_BASE}/repos/{repo_full_name}/issues/comments/{comment_id}"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github.v3+json",
-        "Content-Type": "application/json",
-        "User-Agent": "EcoCoder-Agent/1.0"
-    }
-    payload = {
-        "body": report
-    }
-    
-    try:
-        response = session.patch(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        
-        comment_data = response.json()
-        logger.info(f"Updated GitHub comment: {comment_id}")
-        return comment_data
-        
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 401:
-            raise GitHubPosterError("Authentication failed - check GitHub token permissions")
-        elif e.response.status_code == 403:
-            raise GitHubPosterError("Forbidden - insufficient permissions to update comment")
-        elif e.response.status_code == 404:
-            raise GitHubPosterError(f"Comment not found: {comment_id}")
-        else:
-            raise GitHubPosterError(f"HTTP error {e.response.status_code}: {e.response.text}")
-    except requests.exceptions.RequestException as e:
-        raise GitHubPosterError(f"Request failed: {str(e)}")
-    except json.JSONDecodeError as e:
-        raise GitHubPosterError(f"Invalid JSON response: {str(e)}")
-
-
 def format_report_with_metadata(report_markdown: str, execution_metadata: Dict[str, Any] = None) -> str:
     """
     Format the report with additional metadata and signature
@@ -323,7 +266,6 @@ def post_github_comment(
     repository_full_name: str,
     pull_request_number: int,
     report_markdown: str,
-    update_existing: bool = True,
     execution_metadata: Dict[str, Any] = None
 ) -> dict:
     """
@@ -331,14 +273,12 @@ def post_github_comment(
     Called by agent via @agent.tool decorator in agent.py.
     
     This tool posts the generated Markdown report as a comment on the specified
-    pull request. It can update an existing bot comment if found, or create a
-    new comment if this is the first analysis.
+    pull request.
     
     Args:
         repository_full_name: Repository in "owner/repo" format (e.g., "octocat/Hello-World")
         pull_request_number: PR number (integer)
         report_markdown: Formatted report in Markdown
-        update_existing: Whether to update existing bot comment (default: True)
         execution_metadata: Optional metadata about the analysis execution
         
     Returns:
@@ -347,7 +287,7 @@ def post_github_comment(
             "status": "success" | "failure",
             "comment_id": int,
             "comment_url": str,
-            "action": "created" | "updated",
+            "action": "created",
             "error_message": str  # Only if status is "failure"
         }
     """
@@ -368,24 +308,10 @@ def post_github_comment(
         # Format report with metadata and signature
         full_report = format_report_with_metadata(report_markdown, execution_metadata)
         
-        # Check if we should update existing comment
-        existing_comment_id = None
-        if update_existing:
-            existing_comment_id = find_existing_comment(
-                session, github_token, repository_full_name, pull_request_number
-            )
-        
-        # Post or update comment
-        if existing_comment_id:
-            comment_data = update_comment(
-                session, github_token, repository_full_name, existing_comment_id, full_report
-            )
-            action = "updated"
-        else:
-            comment_data = create_comment(
+        comment_data = create_comment(
                 session, github_token, repository_full_name, pull_request_number, full_report
-            )
-            action = "created"
+        )
+        action = "created"
         
         execution_time = time.time() - start_time
         
@@ -432,7 +358,6 @@ def mock_post_github_comment(
     repository_full_name: str,
     pull_request_number: int,
     report_markdown: str,
-    update_existing: bool = True,
     execution_metadata: Dict[str, Any] = None
 ) -> dict:
     """Mock implementation for development/testing"""
@@ -474,3 +399,5 @@ def mock_post_github_comment(
 if os.getenv('ENVIRONMENT') == 'development' or not os.getenv('AWS_REGION'):
     post_github_comment = mock_post_github_comment
     logger.info("Using mock GitHub poster implementation for development")
+else:
+    logger.info("Using real GitHub poster implementation")
