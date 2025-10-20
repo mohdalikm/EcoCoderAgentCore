@@ -2,3 +2,4 @@
 /.venv
 /.venv-py311
 ecocoder_entry_lambda/.aws-sam/*
+HACKATHON_SUBMISSION.md
