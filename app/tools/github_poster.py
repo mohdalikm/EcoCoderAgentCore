@@ -390,8 +390,7 @@ def mock_post_github_comment(
         "action": "created",  # Always "created" in mock mode
         "repository": repository_full_name,
         "pr_number": pull_request_number,
-        "execution_time_seconds": 1.0,
-        "mock_mode": True
+        "execution_time_seconds": 1.0
     }
 
 

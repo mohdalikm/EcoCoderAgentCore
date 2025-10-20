@@ -80,6 +80,7 @@ graph TB
 - AWS SAM CLI installed
 - GitHub repository with webhook access
 - Python 3.11+ for local development
+- The agent utilises bedrock-agentcore-starter-toolkit as documented here https://github.com/aws/bedrock-agentcore-starter-toolkit
 
 ### 1. Clone and Setup
 
@@ -111,7 +112,6 @@ AWS_REGION=ap-southeast-1
 GITHUB_TOKEN_SECRET_NAME=ecocoder/github-token
 WEBHOOK_SECRET_NAME=ecocoder/webhook-secret
 LOG_LEVEL=INFO
-MOCK_MODE=false  # Set to true for local development
 ```
 
 ### 3. AWS Setup
@@ -152,8 +152,7 @@ aws ssm put-parameter \
 ### 4. Local Development
 
 ```bash
-# Run in mock mode for development
-export MOCK_MODE=true
+# Run in development mode
 python -m app.agent
 ```
 
@@ -378,16 +377,15 @@ flake8 app/ tests/
 mypy app/ --ignore-missing-imports
 ```
 
-### Mock Mode
+For local development without some of live services:
 
-For local development without AWS services:
+export 'ENVIRONMENT' = 'development'
 
 ```bash
-export MOCK_MODE=true
 python -m app.agent
 ```
 
-Mock mode provides:
+This provides:
 - Simulated AWS API responses
 - Fake GitHub webhooks
 - Sample analysis results
@@ -403,29 +401,6 @@ The agent automatically publishes metrics to CloudWatch:
 - `AnalysisLatency` - Time to complete analysis
 - `ErrorRate` - Rate of analysis failures
 - `CarbonFootprintCalculated` - Total CO2 estimates generated
-
-### Logs
-
-Structured logs are sent to CloudWatch Logs:
-
-```json
-{
-  "timestamp": "2024-01-15T10:30:00Z",
-  "level": "INFO", 
-  "message": "Analysis completed for PR #123",
-  "pr_number": 123,
-  "repository": "owner/repo",
-  "carbon_footprint": 0.025,
-  "duration_seconds": 45
-}
-```
-
-### Alarms
-
-Pre-configured CloudWatch alarms monitor:
-- High error rates (>5%)
-- High latency (>30s)
-- Low success rates (<95%)
 
 ## Security
 
@@ -484,13 +459,7 @@ aws sts get-caller-identity
 
 # Check CodeGuru permissions
 aws codeguru-reviewer describe-code-review --code-review-arn "test"
-```
 
-**3. GitHub API rate limits**
-```bash
-# Check rate limit status
-curl -H "Authorization: token YOUR_TOKEN" \
-  https://api.github.com/rate_limit
 ```
 
 ### Debugging
@@ -500,36 +469,12 @@ Enable debug logging:
 export LOG_LEVEL=DEBUG
 ```
 
-Use mock mode for isolation:
-```bash
-export MOCK_MODE=true
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
-
 ### Development Guidelines
 
 - Follow PEP 8 style guidelines
 - Add tests for new functionality
 - Update documentation for API changes
 - Ensure all CI checks pass
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-- 📖 **Documentation**: [Full documentation](https://docs.ecocodercore.com)
-- 🐛 **Issues**: [GitHub Issues](https://github.com/your-org/EcoCoderAgentCore/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/your-org/EcoCoderAgentCore/discussions)
-- 📧 **Contact**: support@ecocodercore.com
 
 ## Roadmap
 

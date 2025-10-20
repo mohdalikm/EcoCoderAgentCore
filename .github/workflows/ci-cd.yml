@@ -60,7 +60,6 @@ jobs:
 
     - name: Run tests
       env:
-        MOCK_MODE: "true"
         AWS_DEFAULT_REGION: us-east-1
       run: |
         python -m pytest tests/ -v --cov=app --cov-report=xml --cov-report=html

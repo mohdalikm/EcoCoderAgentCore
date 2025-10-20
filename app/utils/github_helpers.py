@@ -36,7 +36,6 @@ class GitHubHelper:
         self.token = token
         self.base_url = "https://api.github.com"
         self.session = self._create_session()
-        self._mock_mode = os.getenv('MOCK_MODE', 'false').lower() == 'true'
         
     def _create_session(self) -> requests.Session:
         """Create requests session with retry strategy."""
@@ -82,23 +81,6 @@ class GitHubHelper:
         Raises:
             GitHubError: If payload is invalid or signature doesn't match
         """
-        if self._mock_mode:
-            return {
-                'action': 'opened',
-                'pull_request': {
-                    'number': 123,
-                    'title': 'Mock PR for testing',
-                    'head': {'sha': 'abc123'},
-                    'base': {'sha': 'def456'},
-                    'html_url': 'https://github.com/owner/repo/pull/123'
-                },
-                'repository': {
-                    'name': 'mock-repo',
-                    'owner': {'login': 'mock-owner'},
-                    'full_name': 'mock-owner/mock-repo'
-                }
-            }
-        
         # Convert string payload to dict
         if isinstance(payload, str):
             try:
@@ -158,24 +140,6 @@ class GitHubHelper:
         Returns:
             Pull request data
         """
-        if self._mock_mode:
-            return {
-                'number': pr_number,
-                'title': f'Mock PR #{pr_number}',
-                'state': 'open',
-                'head': {
-                    'sha': 'abc123def456',
-                    'ref': 'feature-branch'
-                },
-                'base': {
-                    'sha': 'main456def789',
-                    'ref': 'main'
-                },
-                'html_url': f'https://github.com/{repo}/pull/{pr_number}',
-                'diff_url': f'https://github.com/{repo}/pull/{pr_number}.diff',
-                'patch_url': f'https://github.com/{repo}/pull/{pr_number}.patch'
-            }
-            
         url = f"{self.base_url}/repos/{repo}/pulls/{pr_number}"
         
         try:
@@ -197,22 +161,6 @@ class GitHubHelper:
         Returns:
             Diff content as string
         """
-        if self._mock_mode:
-            return """diff --git a/src/example.py b/src/example.py
-index 1234567..abcdefg 100644
---- a/src/example.py
-+++ b/src/example.py
-@@ -10,7 +10,7 @@ class Example:
-         self.data = []
- 
-     def process_data(self, items):
--        for item in items:
-+        for i, item in enumerate(items):
-             # Process each item
-             result = self.expensive_operation(item)
-             self.data.append(result)
-"""
-            
         url = f"{self.base_url}/repos/{repo}/pulls/{pr_number}"
         headers = {'Accept': 'application/vnd.github.v3.diff'}
         
@@ -235,25 +183,6 @@ index 1234567..abcdefg 100644
         Returns:
             List of changed files with metadata
         """
-        if self._mock_mode:
-            return [
-                {
-                    'filename': 'src/example.py',
-                    'status': 'modified',
-                    'additions': 5,
-                    'deletions': 2,
-                    'changes': 7,
-                    'patch': '@@ -10,7 +10,7 @@ class Example:\n     self.data = []\n \n def process_data(self, items):\n-        for item in items:\n+        for i, item in enumerate(items):\n         # Process each item\n         result = self.expensive_operation(item)\n         self.data.append(result)'
-                },
-                {
-                    'filename': 'tests/test_example.py',
-                    'status': 'added',
-                    'additions': 15,
-                    'deletions': 0,
-                    'changes': 15
-                }
-            ]
-            
         url = f"{self.base_url}/repos/{repo}/pulls/{pr_number}/files"
         
         try:
@@ -276,14 +205,6 @@ index 1234567..abcdefg 100644
         Returns:
             Created comment data
         """
-        if self._mock_mode:
-            return {
-                'id': 123456789,
-                'html_url': f'https://github.com/{repo}/pull/{pr_number}#issuecomment-123456789',
-                'body': body,
-                'created_at': '2024-01-15T10:30:00Z'
-            }
-            
         url = f"{self.base_url}/repos/{repo}/issues/{pr_number}/comments"
         data = {'body': body}
         
@@ -307,13 +228,6 @@ index 1234567..abcdefg 100644
         Returns:
             Updated comment data
         """
-        if self._mock_mode:
-            return {
-                'id': comment_id,
-                'body': body,
-                'updated_at': '2024-01-15T10:35:00Z'
-            }
-            
         url = f"{self.base_url}/repos/{repo}/issues/comments/{comment_id}"
         data = {'body': body}
         
@@ -338,9 +252,6 @@ index 1234567..abcdefg 100644
         Returns:
             Existing comment data or None
         """
-        if self._mock_mode:
-            return None  # Simulate no existing comment
-            
         url = f"{self.base_url}/repos/{repo}/issues/{pr_number}/comments"
         
         try:
@@ -391,13 +302,6 @@ index 1234567..abcdefg 100644
         Returns:
             Tuple of (is_limited, rate_limit_info)
         """
-        if self._mock_mode:
-            return False, {
-                'limit': 5000,
-                'remaining': 4500,
-                'reset': 1705320000
-            }
-            
         url = f"{self.base_url}/rate_limit"
         
         try:

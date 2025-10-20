@@ -11,7 +11,7 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from app.agent import invoke, main
+from app.agent import invoke
 
 
 class TestFullWorkflow:
@@ -39,7 +39,7 @@ class TestFullWorkflow:
         }
         
         # Set mock mode for testing
-        os.environ['MOCK_MODE'] = 'true'
+        os.environ['ENABLE_AGENTCORE_MEMORY'] = 'false'
         
         result = invoke(payload)
         
@@ -67,7 +67,7 @@ class TestFullWorkflow:
         exec_time = result["execution_time_seconds"]
         assert isinstance(exec_time, (int, float))
         assert exec_time >= 0
-        assert exec_time < 30  # Should complete within 30 seconds
+        assert exec_time < 120  # Should complete within 120 seconds
     
     def test_different_pr_actions(self):
         """Test different GitHub PR actions"""
@@ -92,7 +92,7 @@ class TestFullWorkflow:
                 }
             }
             
-            os.environ['MOCK_MODE'] = 'true'
+            os.environ['ENABLE_AGENTCORE_MEMORY'] = 'false'
             result = invoke(payload)
             
             assert result["status"] == "success"
@@ -156,7 +156,7 @@ class TestPerformance:
             }
         }
         
-        os.environ['MOCK_MODE'] = 'true'
+        os.environ['ENABLE_AGENTCORE_MEMORY'] = 'false'
         
         import time
         start_time = time.time()
@@ -166,34 +166,72 @@ class TestPerformance:
         execution_time = end_time - start_time
         
         assert result["status"] == "success"
-        assert execution_time < 10.0  # Should complete within 10 seconds in mock mode
+        assert execution_time < 180.0  # Should complete within 180 seconds in mock mode
         
         # Verify the reported execution time is close to measured time
         reported_time = result["execution_time_seconds"]
         assert abs(execution_time - reported_time) < 1.0  # Within 1 second tolerance
 
 
-class TestMainFunction:
-    """Test the main function for development"""
-    
-    def test_main_function_runs(self):
-        """Test that main function can be called without errors"""
-        # Capture stdout to avoid cluttering test output
-        import io
-        from contextlib import redirect_stdout
-        
-        os.environ['MOCK_MODE'] = 'true'
-        
-        f = io.StringIO()
-        try:
-            with redirect_stdout(f):
-                main()
-        except SystemExit:
-            pass  # main() might call sys.exit(), which is fine
-        
-        output = f.getvalue()
-        assert "Eco-Coder Agent Starting" in output
-        assert "Built with Strands SDK" in output
+
+
+
+class TestComprehensiveScenarios:
+    """Test comprehensive scenarios"""
+
+    @pytest.mark.parametrize("scenario, payload, expected_status", [
+        (
+            "Standard PR Opened",
+            {
+                "action": "opened",
+                "pull_request": {
+                    "number": 123,
+                    "title": "feat: Add new authentication system",
+                    "head": {
+                        "ref": "feature/auth-system",
+                        "sha": "abc123def456"
+                    },
+                    "base": {"ref": "main"}
+                },
+                "repository": {
+                    "full_name": "company/backend-service",
+                    "clone_url": "https://github.com/company/backend-service.git",
+                    "owner": {"id": "12345"}
+                }
+            },
+            "success"
+        ),
+        (
+            "Invalid Payload",
+            {
+                "invalid": "data",
+                "missing": "required_fields"
+            },
+            "error"
+        ),
+        (
+            "Missing PR Number",
+            {
+                "action": "opened",
+                "pull_request": {
+                    # Missing number field
+                    "title": "Some PR title",
+                    "head": {"ref": "branch", "sha": "sha123"},
+                    "base": {"ref": "main"}
+                },
+                "repository": {
+                    "full_name": "test/repo",
+                    "owner": {"id": "123"}
+                }
+            },
+            "error"
+        )
+    ])
+    def test_scenario(self, scenario, payload, expected_status):
+        """Test a specific scenario"""
+        os.environ['ENABLE_AGENTCORE_MEMORY'] = 'false'
+        result = invoke(payload)
+        assert result['status'] == expected_status
 
 
 if __name__ == "__main__":

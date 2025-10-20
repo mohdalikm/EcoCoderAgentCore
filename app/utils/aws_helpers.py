@@ -27,7 +27,6 @@ class AWSHelper:
         """Initialize AWS helper with clients."""
         self.session = boto3.Session()
         self._clients = {}
-        self._mock_mode = os.getenv('MOCK_MODE', 'false').lower() == 'true'
         
     def get_client(self, service_name: str, region_name: Optional[str] = None) -> Any:
         """
@@ -43,9 +42,6 @@ class AWSHelper:
         Raises:
             AWSError: If client creation fails
         """
-        if self._mock_mode:
-            return MockAWSClient(service_name)
-            
         client_key = f"{service_name}:{region_name or 'default'}"
         
         if client_key not in self._clients:
@@ -73,16 +69,6 @@ class AWSHelper:
         Returns:
             Parameter value or None if not found
         """
-        if self._mock_mode:
-            mock_params = {
-                '/ecocoder/carbon-intensity/us-east-1': '0.4',
-                '/ecocoder/carbon-intensity/us-west-2': '0.3',
-                '/ecocoder/carbon-intensity/eu-west-1': '0.25',
-                '/ecocoder/config/profiling-duration': '300',
-                '/ecocoder/config/reviewer-timeout': '3600'
-            }
-            return mock_params.get(name)
-            
         try:
             ssm = self.get_client('ssm')
             response = ssm.get_parameter(Name=name, WithDecryption=decrypt)
@@ -112,12 +98,6 @@ class AWSHelper:
         Returns:
             Secret value as dictionary
         """
-        if self._mock_mode:
-            return {
-                'github_token': 'mock_github_pat_token',
-                'webhook_secret': 'mock_webhook_secret'
-            }
-            
         try:
             secrets_client = self.get_client('secretsmanager', region_name)
             response = secrets_client.get_secret_value(SecretId=secret_id)
@@ -163,15 +143,6 @@ class AWSHelper:
         Raises:
             AWSError: If operation fails or times out
         """
-        if self._mock_mode:
-            # Simulate completion after short delay
-            time.sleep(1)
-            return {
-                'State': 'Completed',
-                'Status': 'Success',
-                'MockData': True
-            }
-            
         attempt = 0
         current_delay = delay
         
@@ -218,10 +189,6 @@ class AWSHelper:
             resource_arn: AWS resource ARN
             tags: Dictionary of tag key-value pairs
         """
-        if self._mock_mode:
-            logger.info(f"Mock: Would tag resource {resource_arn} with {tags}")
-            return
-            
         try:
             # Extract service from ARN to get appropriate client
             service = resource_arn.split(':')[2]
@@ -241,59 +208,8 @@ class AWSHelper:
             # Don't raise - tagging failure shouldn't break the workflow
 
 
-class MockAWSClient:
-    """Mock AWS client for development and testing."""
-    
-    def __init__(self, service_name: str):
-        self.service_name = service_name
-        
-    def __getattr__(self, name: str) -> Any:
-        """Return mock response for any AWS API call."""
-        def mock_call(*args, **kwargs):
-            logger.info(f"Mock AWS call: {self.service_name}.{name}({args}, {kwargs})")
-            
-            # Return service-specific mock responses
-            if self.service_name == 'codeguru-reviewer':
-                if name == 'create_code_review':
-                    return {'CodeReview': {'CodeReviewArn': 'mock-review-arn-123'}}
-                elif name == 'describe_code_review':
-                    return {
-                        'CodeReview': {
-                            'State': 'Completed',
-                            'CodeReviewArn': 'mock-review-arn-123'
-                        }
-                    }
-                elif name == 'list_recommendations':
-                    return {
-                        'RecommendationSummaries': [
-                            {
-                                'RecommendationId': 'mock-rec-1',
-                                'Description': 'Consider using more efficient algorithm',
-                                'Severity': 'High',
-                                'RuleMetadata': {'RuleName': 'PerformanceOptimization'}
-                            }
-                        ]
-                    }
-                    
-            elif self.service_name == 'codeguru-profiler':
-                if name == 'create_profiling_group':
-                    return {'profilingGroup': {'name': 'mock-profiling-group'}}
-                elif name == 'describe_profiling_group':
-                    return {
-                        'profilingGroup': {
-                            'name': 'mock-profiling-group',
-                            'status': 'Active'
-                        }
-                    }
-                elif name == 'get_profile':
-                    return {
-                        'profile': b'mock-profile-data',
-                        'contentType': 'application/x-amzn-ion'
-                    }
-                    
-            return {'MockResponse': True, 'Service': self.service_name}
-            
-        return mock_call
+# Global instance for easy access
+aws_helper = AWSHelper()
 
 
 # Global instance for easy access
