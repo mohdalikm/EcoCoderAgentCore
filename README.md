@@ -16,7 +16,7 @@ EcoCoderAgentCore is an intelligent AI agent that analyzes GitHub pull requests 
 - 🔍 **Code Quality Review** - Static analysis using Amazon CodeGuru Reviewer
 - ⚡ **Performance Profiling** - Identify bottlenecks with CodeGuru Profiler  
 - 📊 **Automated Reporting** - Post detailed analysis to GitHub pull requests
-- 🚀 **Scalable Architecture** - Container-based deployment with AWS AgentCore
+- 🚀 **Scalable Architecture** - Container-based deployment with AWS AgentCore for the Agent and tools; and SAM based deployment for API Gateway and Lambds
 - 🔒 **Enterprise Ready** - IAM roles, secrets management, monitoring included
 
 ## Architecture
@@ -214,6 +214,14 @@ curl http://localhost:3000/health
 ### GitHub Integration
 
 1. **Deploy the Infrastructure**: 
+  - Deploy Bedrock Agenctcore Runtime hosted agent
+  Run 'agentcore configure' to configure your agent
+  run agentcore launch to deploy the agent to aws environment
+  run agentcore invoke to call the agent running in aws envrionment directly from your local machine
+
+  Update the variable AgentArn in the SAM template.yaml file under ecocode_entry_lambda folder with the agent runtime arn
+
+  - Deploy API Gateway and Lamba entry point
    ```bash
    ./deploy.sh
    ```
