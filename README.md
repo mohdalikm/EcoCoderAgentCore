@@ -13,7 +13,7 @@ EcoCoderAgentCore is an intelligent AI agent that analyzes GitHub pull requests 
 ### Key Features
 
 - 🌱 **Carbon Footprint Analysis** - Calculate CO2 emissions from code performance
-- 🔍 **Code Quality Review** - Static analysis using Amazon CodeGuru Reviewer
+- 🔍 **Code Quality Review** - Modern LLM-based static analysis for comprehensive code review
 - ⚡ **Enhanced Performance Profiling** - AI-powered test discovery with real CodeBuild execution and CodeGuru Profiler integration
 - 🤖 **AI Test Discovery** - Automatically finds and runs relevant test scripts from PR changes
 - 📊 **Automated Reporting** - Post detailed analysis to GitHub pull requests
@@ -32,7 +32,7 @@ graph TB
     D --> E[Bedrock AgentCore Runtime]
     E --> F[EcoCoder Agent Container]
     
-    F --> G[CodeGuru Reviewer]
+    F --> G[LLM Code Analysis]
     F --> H[CodeGuru Profiler]
     F --> I[CodeCarbon Estimator]
     F --> J[GitHub Poster]
@@ -223,7 +223,7 @@ After deploying your AgentCore runtime with `agentcore launch`, run the permissi
 This script will:
 - Find your AgentCore runtime role automatically
 - Attach Bedrock AgentCore memory permissions
-- Attach CodeGuru Profiler and Reviewer permissions
+- Attach CodeGuru Profiler permissions
 - Configure access to Systems Manager and Secrets Manager
 
 ### 4. Local Development
@@ -317,7 +317,7 @@ curl http://localhost:3000/health
    - Receive webhook via API Gateway
    - Forward to Lambda function (`ecocoder-core-entry`)
    - Invoke Bedrock AgentCore Runtime
-   - Analyze code quality with CodeGuru Reviewer
+   - Analyze code quality with LLM analysis
    - Profile performance characteristics
    - Calculate carbon footprint estimates
    - Post a comprehensive Green Code Report
@@ -379,7 +379,7 @@ spec:
 
 Each tool can be configured independently:
 
-- **CodeGuru Reviewer**: Timeout, analysis type, rule sets
+- **LLM Code Analysis**: Analysis depth, model selection, prompt customization
 - **CodeGuru Profiler**: Duration, sampling rate, flame graph options
 - **CodeCarbon**: Regional intensity, calculation method
 - **GitHub Poster**: Comment format, update behavior
@@ -393,7 +393,7 @@ EcoCoderAgentCore/
 ├── app/
 │   ├── agent.py              # Main agent entrypoint
 │   ├── tools/                # Analysis tools
-│   │   ├── codeguru_reviewer.py
+│   │   ├── llm_code_reviewer.py
 │   │   ├── codeguru_profiler.py
 │   │   ├── codecarbon_estimator.py
 │   │   └── github_poster.py
@@ -492,7 +492,7 @@ The agent automatically publishes metrics to CloudWatch:
 
 ### IAM Permissions
 
-The agent follows least-privilege principles:
+Example IAM policy for the agent:
 
 ```json
 {
@@ -501,11 +501,10 @@ The agent follows least-privilege principles:
     {
       "Effect": "Allow",
       "Action": [
-        "codeguru-reviewer:CreateCodeReview",
-        "codeguru-reviewer:DescribeCodeReview",
-        "codeguru-reviewer:ListRecommendations"
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
       ],
-      "Resource": "*"
+      "Resource": "arn:aws:bedrock:*::foundation-model/*"
     }
   ]
 }
@@ -543,8 +542,8 @@ curl -X POST https://your-endpoint/webhook/github \
 # Test AWS credentials
 aws sts get-caller-identity
 
-# Check CodeGuru permissions
-aws codeguru-reviewer describe-code-review --code-review-arn "test"
+# Check Bedrock permissions
+aws bedrock list-foundation-models
 ```
 
 **3. CodeGuru Profiler permission issues**
@@ -554,12 +553,12 @@ If you see the error "Permission limitations prevented performance profiling":
 # Run the comprehensive permissions setup script
 ./scripts/setup-permissions.sh
 
-# This will configure both memory and CodeGuru permissions
+# This will configure both memory and CodeGuru Profiler permissions
 # Alternatively, run the legacy memory-only script:
 ./scripts/setup-memory-permissions.sh
 ```
 
-The issue occurs when the AgentCore runtime role lacks required CodeGuru permissions:
+The issue occurs when the AgentCore runtime role lacks required CodeGuru Profiler permissions:
 - `codeguru-profiler:GetProfile`
 - `codeguru-profiler:GetRecommendations` 
 - `codeguru-profiler:DescribeProfilingGroup`
@@ -569,8 +568,8 @@ The issue occurs when the AgentCore runtime role lacks required CodeGuru permiss
 # Test CodeGuru Profiler access
 aws codeguru-profiler list-profiling-groups
 
-# Test CodeGuru Reviewer access  
-aws codeguru-reviewer list-code-reviews
+# Test Bedrock access  
+aws bedrock list-foundation-models
 
 # Check Systems Manager access
 aws ssm get-parameter --name "/ecocoder/config/profiling-duration"

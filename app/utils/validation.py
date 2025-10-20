@@ -367,7 +367,7 @@ class ConfigValidator:
                 
         # Validate AWS config
         aws_config = config['aws']
-        required_aws = ['region', 'codeguru_reviewer_timeout', 'profiler_duration']
+        required_aws = ['region', 'profiler_duration']
         for field in required_aws:
             if field not in aws_config:
                 raise ValidationError(f"Missing AWS config: {field}")

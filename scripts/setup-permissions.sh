@@ -181,7 +181,7 @@ echo ""
 CODEGURU_POLICY_ARN=$(create_or_update_policy \
     "$CODEGURU_POLICY_NAME" \
     "$CODEGURU_POLICY_FILE" \
-    "CodeGuru Profiler and Reviewer permissions for EcoCoder")
+    "CodeGuru Profiler permissions for EcoCoder")
 
 echo ""
 
@@ -282,7 +282,7 @@ if [[ $SUCCESS_COUNT -eq $TOTAL_ATTACHMENTS ]]; then
     echo -e "${PURPLE}✨ Your EcoCoder agent now has access to:${NC}"
     echo -e "${GREEN}  ✅ Bedrock AgentCore Memory Management${NC}"
     echo -e "${GREEN}  ✅ CodeGuru Profiler (Performance Analysis)${NC}"
-    echo -e "${GREEN}  ✅ CodeGuru Reviewer (Code Quality)${NC}"
+    echo -e "${GREEN}  ✅ LLM Code Analysis (Code Quality)${NC}"
     echo -e "${GREEN}  ✅ Systems Manager Parameters${NC}"
     echo -e "${GREEN}  ✅ Secrets Manager${NC}"
     echo -e "${GREEN}  ✅ CloudWatch Logs (CodeBuild Integration)${NC}"

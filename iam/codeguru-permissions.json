@@ -18,19 +18,15 @@
             ]
         },
         {
-            "Sid": "CodeGuruReviewerPermissions",
+            "Sid": "BedrockPermissions",
             "Effect": "Allow",
             "Action": [
-                "codeguru-reviewer:AssociateRepository",
-                "codeguru-reviewer:DescribeRepositoryAssociation",
-                "codeguru-reviewer:ListRepositoryAssociations",
-                "codeguru-reviewer:CreateCodeReview",
-                "codeguru-reviewer:DescribeCodeReview",
-                "codeguru-reviewer:ListRecommendations",
-                "codeguru-reviewer:DescribeRecommendationFeedback"
+                "bedrock:InvokeModel",
+                "bedrock:InvokeModelWithResponseStream",
+                "bedrock:ListFoundationModels"
             ],
             "Resource": [
-                "*"
+                "arn:aws:bedrock:*::foundation-model/*"
             ]
         },
         {

@@ -33,7 +33,7 @@ class AWSHelper:
         Get or create AWS service client.
         
         Args:
-            service_name: AWS service name (e.g., 'codeguru-reviewer')
+            service_name: AWS service name (e.g., 'bedrock')
             region_name: AWS region, defaults to session region
             
         Returns:
@@ -196,9 +196,7 @@ class AWSHelper:
             
             tag_list = [{'Key': k, 'Value': v} for k, v in tags.items()]
             
-            if service == 'codeguru-reviewer':
-                client.tag_resource(resourceArn=resource_arn, Tags=tag_list)
-            elif service == 'codeguru-profiler':
+            if service == 'codeguru-profiler':
                 client.tag_resource(resourceArn=resource_arn, tags=tags)
             else:
                 logger.warning(f"Tagging not implemented for service: {service}")

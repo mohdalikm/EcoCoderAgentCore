@@ -28,7 +28,7 @@ project_root = os.path.dirname(current_dir)
 sys.path.insert(0, project_root)
 
 # Import tool implementations
-from app.tools.codeguru_reviewer import analyze_code_quality
+from app.tools.llm_code_reviewer import analyze_code_quality_with_llm
 from app.tools.codeguru_profiler import profile_code_performance, profile_pull_request_performance
 from app.tools.codecarbon_estimator import calculate_carbon_footprint
 from app.tools.github_poster import post_github_comment
@@ -42,6 +42,9 @@ from app.prompts import SYSTEM_PROMPT
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Create a global variable to store the current payload for tool access
+current_payload = None
 
 # Initialize app
 app = BedrockAgentCoreApp()
@@ -174,23 +177,42 @@ def create_agent(session_id: str, repository: str) -> Agent:
     @tool
     def analyze_code(repository_arn: str, branch_name: str, commit_sha: str) -> dict:
         """
-        Analyze code quality using Amazon CodeGuru Reviewer.
+        Analyze code quality using AI-powered LLM analysis.
         
-        This tool creates a code review for the specified repository and commit,
-        waits for completion, and returns all recommendations organized by severity.
+        This tool creates a comprehensive code review using Large Language Models (LLMs)
+        to analyze pull request diffs for security, performance, maintainability, and best practices.
+        This uses modern LLM-based analysis for comprehensive code review.
         
         Args:
-            repository_arn: ARN of the repository to analyze
+            repository_arn: ARN of the repository to analyze (for compatibility)
             branch_name: Git branch name
             commit_sha: Git commit SHA to analyze
             
         Returns:
-            Dictionary containing code quality recommendations with severity levels,
-            file locations, and remediation suggestions.
+            Dictionary containing comprehensive code review findings with severity levels,
+            security analysis, performance recommendations, and actionable improvements.
         """
-        logger.info(f"🔍 TOOL CALL: analyze_code - repository_arn={repository_arn}, branch_name={branch_name}, commit_sha={commit_sha}")
-        result = analyze_code_quality(repository_arn, branch_name, commit_sha)
-        logger.info(f"✅ TOOL RESULT: analyze_code completed with status: {result.get('status', 'unknown')}")
+        logger.info(f"🔍 TOOL CALL: analyze_code (LLM) - repository_arn={repository_arn}, branch_name={branch_name}, commit_sha={commit_sha}")
+        
+        # Use GitHub token from secrets
+        github_token = None
+        try:
+            secret = aws_helper.get_secret(GITHUB_TOKEN_SECRET_ARN)
+            github_token = secret.get('github_token')
+            logger.info("✅ Retrieved GitHub token for LLM code analysis")
+        except Exception as e:
+            logger.warning(f"Could not retrieve GitHub token: {e}")
+        
+        # Call the new LLM-based code reviewer with the current payload
+        result = analyze_code_quality_with_llm(
+            repository_arn=repository_arn,
+            branch_name=branch_name,
+            commit_sha=commit_sha,
+            pr_payload=current_payload,  # Pass the current webhook payload
+            github_token=github_token
+        )
+        
+        logger.info(f"✅ TOOL RESULT: analyze_code (LLM) completed with status: {result.get('status', 'unknown')}")
         return result
     
     @tool
@@ -264,7 +286,7 @@ def create_agent(session_id: str, repository: str) -> Agent:
         result = {
             "status": "setup_required",
             "message": "Performance Monitoring Setup",
-            "description": "CodeGuru Profiler integration requires proper AWS service setup (profiling groups, repository associations). Run the setup script: './scripts/setup-codeguru-services.sh'",
+            "description": "CodeGuru Profiler integration requires proper AWS service setup (profiling groups, repository associations). Run the setup script: './scripts/setup-codeguru-profiler.sh'",
             "estimated_metrics": {
                 "cpu_time_ms": 25,
                 "memory_usage_mb": 45,
@@ -277,9 +299,9 @@ def create_agent(session_id: str, repository: str) -> Agent:
                 ]
             },
             "next_steps": [
-                "Run './scripts/setup-codeguru-services.sh' to configure AWS services",
+                "Run './scripts/setup-codeguru-profiler.sh' to configure AWS services",
                 "Ensure proper IAM permissions for CodeGuru services",
-                "Consider alternative profiling tools due to CodeGuru Reviewer deprecation"
+                "Consider alternative profiling tools for enhanced performance analysis"
             ]
         }
         
@@ -396,6 +418,7 @@ def invoke(payload: dict) -> dict:
         "pull_request": {
             "number": 123,
             "title": "Feature: Add new functionality",
+            "diff_url": "https://github.com/owner/repo/pull/123.diff",
             "head": {"ref": "feature-branch", "sha": "abc123"},
             "base": {"ref": "main"}
         },
@@ -414,10 +437,14 @@ def invoke(payload: dict) -> dict:
         "agent_response": "Final agent message"
     }
     """
+    global current_payload
     start_time = time.time()
     logger.info("Eco-Coder agent invoked, start of the entrypoint")
     
     try:
+        # Store payload globally for tool access
+        current_payload = payload
+        
         logger.info(f"Received payload: {json.dumps(payload, indent=2)}")
         
         # Check if agent was initialized properly

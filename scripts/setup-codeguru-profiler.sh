@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Setup script for AWS CodeGuru Services (Profiler & Reviewer)
-# This script configures CodeGuru Profiler and provides information about CodeGuru Reviewer deprecation
+# Setup script for AWS CodeGuru Profiler
+# This script configures CodeGuru Profiler for the EcoCoder agent
 
 set -e
 
@@ -19,7 +19,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}=== EcoCoder AWS CodeGuru Services Setup ===${NC}"
+echo -e "${BLUE}=== EcoCoder AWS CodeGuru Profiler Setup ===${NC}"
 echo ""
 
 # Function to print colored output
@@ -141,37 +141,6 @@ setup_codeguru_profiler() {
     print_status "CodeGuru Profiler setup completed"
 }
 
-# Handle CodeGuru Reviewer (with deprecation notice)
-handle_codeguru_reviewer() {
-    print_warning "=== CodeGuru Reviewer Status ==="
-    print_warning "IMPORTANT: Amazon CodeGuru Reviewer will be discontinued on November 7, 2025"
-    print_warning "New repository associations cannot be created after this date."
-    echo ""
-    
-    print_info "Checking existing CodeGuru Reviewer associations..."
-    
-    # List existing associations
-    ASSOCIATIONS=$(aws codeguru-reviewer list-repository-associations --region "$CURRENT_REGION" --query 'RepositoryAssociationSummaries[].{Name:RepositoryName,State:State,ARN:AssociationArn}' --output table 2>/dev/null || echo "No associations found or access denied")
-    
-    if [[ "$ASSOCIATIONS" != "No associations found or access denied" ]]; then
-        echo "$ASSOCIATIONS"
-        print_status "Found existing CodeGuru Reviewer associations"
-    else
-        print_warning "No existing CodeGuru Reviewer associations found"
-    fi
-    
-    echo ""
-    print_info "Alternatives to CodeGuru Reviewer:"
-    print_info "  • SonarQube (self-hosted or cloud)"
-    print_info "  • GitHub CodeQL (for GitHub repositories)"
-    print_info "  • ESLint (for JavaScript/TypeScript)"
-    print_info "  • Pylint/Bandit (for Python)"
-    print_info "  • SpotBugs/PMD (for Java)"
-    print_info "  • Custom static analysis in CI/CD pipelines"
-    
-    print_status "CodeGuru Reviewer status check completed"
-}
-
 # Test CodeGuru Profiler functionality
 test_codeguru_profiler() {
     print_info "Testing CodeGuru Profiler functionality..."
@@ -222,20 +191,13 @@ generate_summary() {
   - Account: $ACCOUNT_ID
   - Status: Ready for use
 
-⚠ CodeGuru Reviewer Status:
-  - Service will be deprecated on November 7, 2025
-  - Consider alternative code quality tools
-  - Existing associations will continue to work until deprecation
-
 📋 Next Steps:
-  1. Deploy the updated EcoCoder agent with enhanced CodeGuru integration
+  1. Deploy the updated EcoCoder agent with enhanced CodeGuru Profiler integration
   2. Test profiling functionality with a sample PR
-  3. Plan migration from CodeGuru Reviewer to alternative tools
-  4. Monitor profiling group usage in AWS Console
+  3. Monitor profiling group usage in AWS Console
 
 🔗 Useful Links:
   - CodeGuru Profiler Console: https://console.aws.amazon.com/codeguru/profiler
-  - CodeGuru Reviewer Console: https://console.aws.amazon.com/codeguru/reviewer
   - Profiling Group: https://console.aws.amazon.com/codeguru/profiler#/profiling-groups/$DEFAULT_PROFILING_GROUP
 
 EOF
@@ -249,12 +211,10 @@ main() {
     echo ""
     setup_codeguru_profiler
     echo ""
-    handle_codeguru_reviewer
-    echo ""
     test_codeguru_profiler
     generate_summary
     
-    print_status "CodeGuru services setup completed successfully!"
+    print_status "CodeGuru Profiler setup completed successfully!"
 }
 
 # Handle script arguments
