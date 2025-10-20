@@ -112,7 +112,7 @@ INFO - Agent analysis completed in 0.00 seconds: Analysis completed successfully
 
 **Import Errors**: Make sure you're using the virtual environment:
 ```bash
-source .venv/bin/activate
+source .venv-py311/bin/activate
 ```
 
 **Missing Dependencies**: Reinstall dependencies:

@@ -14,8 +14,11 @@ import os
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from strands import Agent
 from bedrock_agentcore import BedrockAgentCoreApp
+from bedrock_agentcore.memory import MemoryClient
+from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
 from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
     
 
@@ -30,11 +33,11 @@ from app.tools.codeguru_profiler import profile_code_performance
 from app.tools.codecarbon_estimator import calculate_carbon_footprint
 from app.tools.github_poster import post_github_comment
 
-# Configure structured logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Import system prompt
+from app.prompts import SYSTEM_PROMPT
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Initialize app
@@ -45,34 +48,64 @@ app = BedrockAgentCoreApp()
 AWS_REGION = os.getenv('AWS_REGION', 'ap-southeast-1')
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 GITHUB_TOKEN_SECRET_ARN = os.getenv('GITHUB_TOKEN_SECRET_ARN', 'eco-coder/github-token')
+ENABLE_AGENTCORE_MEMORY = os.getenv('ENABLE_AGENTCORE_MEMORY', 'true').lower() == 'true'
 
 
-def load_system_prompt() -> str:
-    """Load the system prompt from file"""
-    try:
-        with open('app/prompts/system_prompt.md', 'r', encoding='utf-8') as f:
-            return f.read()
-    except FileNotFoundError:
-        # Fallback system prompt
-        return """
-You are Eco-Coder, an expert AI agent specializing in Green Software Engineering and sustainable software development.
-Your mission is to analyze code changes in GitHub pull requests and provide comprehensive, actionable feedback
-that helps developers write more efficient, sustainable, and high-quality software.
-
-You have access to tools for code analysis, performance profiling, carbon footprint calculation, and GitHub integration.
-Follow the prescribed workflow to gather data from all tools and synthesize it into a comprehensive Green Code Report.
-"""
+def load_system_prompt():    
+    # Use embedded system prompt
+    logger.warning("Using embedded system prompt")
+    return SYSTEM_PROMPT
 
 
 def get_session_manager(actor_id: str, session_id: str):
     """Initialize session manager"""
+    
+    # Check if AgentCore Memory is enabled
+    if not ENABLE_AGENTCORE_MEMORY:
+        logger.info("AgentCore Memory disabled via environment variable")
+        return None
+    
     try:
-        memory_config = {
-            'memory_id': f'eco-coder-memory-{actor_id}',
-            'session_id': session_id,
-            'actor_id': actor_id
-        }
-        return AgentCoreMemorySessionManager(agentcore_memory_config=memory_config)
+        # Initialize MemoryClient
+        client = MemoryClient(region_name=AWS_REGION)
+        
+        # Create or get memory
+        try:
+            # Try to get existing memory first
+            memories_response = client.list_memories()
+            memory = None
+            memories = memories_response.get('memories', []) if isinstance(memories_response, dict) else []
+            
+            for mem in memories:
+                if mem.get('name') == 'eco-coder-memory':
+                    memory = mem
+                    break
+            
+            if not memory:
+                # Create new memory if not found
+                memory = client.create_memory(
+                    name="eco-coder-memory",
+                    description="Memory for Eco-Coder agent to track analysis history and context"
+                )
+        except Exception as e:
+            logger.warning(f"Could not create/get memory, creating basic memory: {e}")
+            memory = client.create_memory(
+                name=f"eco-coder-memory-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                description="Basic memory for Eco-Coder agent"
+            )
+        
+        # Create memory configuration
+        memory_config = AgentCoreMemoryConfig(
+            memory_id=memory.get('id'),
+            session_id=session_id,
+            actor_id=actor_id
+        )
+        
+        logger.info(f"Created AgentCore Memory session for actor={actor_id}, session={session_id}")
+        return AgentCoreMemorySessionManager(
+            agentcore_memory_config=memory_config,
+            region_name=AWS_REGION
+        )
     except Exception as e:
         logger.warning(f"Could not initialize AgentCore Memory, using default: {e}")
         return None
@@ -81,8 +114,12 @@ def get_session_manager(actor_id: str, session_id: str):
 def create_agent(session_id: str, repository: str) -> Agent:
     """Create a Strands agent instance with registered tools"""
     
-    # Load system prompt
-    system_prompt = load_system_prompt()
+    # Load system prompt - this will raise an exception if file is missing
+    try:
+        system_prompt = load_system_prompt()
+    except (FileNotFoundError, RuntimeError) as e:
+        logger.error(f"Failed to load system prompt: {e}")
+        raise RuntimeError(f"Agent initialization failed - system prompt file missing or unreadable: {e}")
     
     # Initialize session manager
     session_manager = get_session_manager(
@@ -228,8 +265,13 @@ def parse_github_webhook(payload: dict) -> dict:
         logger.error(f"Error parsing GitHub webhook: {e}")
         raise ValueError(f"Invalid GitHub webhook payload: {e}")
 
-# Create agent instance for this analysis
-agent = create_agent("x9kuy", 'test-repo')
+# Create agent instance for this analysis - handle initialization errors
+try:
+    agent = create_agent("x9kuy", 'test-repo')
+except RuntimeError as e:
+    logger.error(f"Agent initialization failed: {e}")
+    # Don't create agent if system prompt is missing
+    agent = None
 
 @app.entrypoint
 def invoke(payload: dict) -> dict:
@@ -265,6 +307,17 @@ def invoke(payload: dict) -> dict:
     
     try:
         logger.info(f"Received payload: {json.dumps(payload, indent=2)}")
+        
+        # Check if agent was initialized properly
+        if agent is None:
+            error_msg = "Agent initialization failed - system prompt could not be loaded."
+            logger.error(error_msg)
+            return {
+                "status": "error",
+                "message": error_msg,
+                "session_id": "unknown",
+                "execution_time_seconds": round(time.time() - start_time, 3)
+            }
         
         # Parse GitHub webhook payload
         pr_info = parse_github_webhook(payload)
