@@ -710,18 +710,14 @@ class CodeBuildProfilerRunner:
             raise ProfilerError(f"Test execution failed: {str(e)}")
     
     def _create_or_get_profiling_group(self, pr_code: Dict[str, Any]) -> str:
-        """Create or get a profiling group for this PR with fallback logic"""
+        """Always use a single default profiling group for all PRs"""
         try:
-            # First try to create a PR-specific profiling group
-            return self._create_profiling_group(pr_code)
-        except ProfilerError as e:
-            logger.warning(f"Failed to create PR-specific profiling group: {str(e)}")
-            # Fall back to a default profiling group
+            # Always use the default profiling group to avoid creating a new one for each PR
             return self._get_or_create_default_profiling_group()
         except Exception as e:
-            logger.error(f"Unexpected error creating profiling group: {str(e)}")
-            # Last resort: return a fallback group name that we'll try to create
-            return self._get_or_create_default_profiling_group()
+            logger.error(f"Unexpected error getting or creating default profiling group: {str(e)}")
+            # If default group fails, raise an error as this is a critical failure
+            raise ProfilerError(f"Failed to get or create default profiling group: {str(e)}")
     
     def _get_or_create_default_profiling_group(self) -> str:
         """Get or create a default profiling group for EcoCoder with enhanced error handling"""
